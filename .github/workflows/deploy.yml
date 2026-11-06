@@ -31,6 +31,9 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+        env:
+          # Public anon key, set under repo Settings → Secrets and variables → Actions → Variables.
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

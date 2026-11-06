@@ -30,6 +30,69 @@ input:focus-visible {
   outline-offset: 2px;
 }
 
+.auth-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  width: min(100%, 380px);
+  padding: 28px 24px;
+  border: 1px solid #e0e4e1;
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+}
+
+.auth-card h1 {
+  font-size: 24px;
+}
+
+.auth-text {
+  margin: 10px 0 0;
+  color: #69716c;
+  font-size: 14px;
+}
+
+.auth-text code {
+  font-size: 12px;
+}
+
+.google-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 20px;
+  padding: 10px 14px;
+  border: 1px solid #dadce0;
+  border-radius: 5px;
+  background: #fff;
+  color: #3c4043;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.google-button:hover {
+  background: #f7f8f8;
+}
+
+.auth-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: min(100% - 40px, 920px);
+  margin: 0 auto;
+  padding-top: 14px;
+  color: #69716c;
+  font-size: 12px;
+}
+
 .page {
   width: min(100% - 40px, 920px);
   margin: 0 auto;

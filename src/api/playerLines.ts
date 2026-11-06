@@ -1,3 +1,5 @@
+import { fetchAsUser } from "../supabase";
+
 export type PlayerLine = {
   bookmaker: string;
   /** e.g. "player_rush_yds_alternate" or "player_anytime_td". */
@@ -58,7 +60,7 @@ export async function getPlayerLines(
   url.searchParams.set("player_id", playerId);
   url.searchParams.set("game_id", gameId);
 
-  const response = await fetch(url, { signal });
+  const response = await fetchAsUser(url, signal);
   if (!response.ok) {
     throw new Error(`Could not load bookmaker lines (server returned ${response.status}).`);
   }

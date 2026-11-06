@@ -1,3 +1,5 @@
+import { fetchAsUser } from "../supabase";
+
 export type Position = "QB" | "RB" | "WR" | "TE" | "K";
 
 /** Projected weekly stat line. Stats the server doesn't project are 0. */
@@ -129,7 +131,7 @@ function parseWeek(value: unknown, games: unknown): ProjectionWeek | null {
 }
 
 export async function getPlayerProjections(signal?: AbortSignal): Promise<PlayerProjections> {
-  const response = await fetch(projectionsUrl, { signal });
+  const response = await fetchAsUser(projectionsUrl, signal);
   if (!response.ok) {
     throw new Error(`Could not load player projections (server returned ${response.status}).`);
   }
