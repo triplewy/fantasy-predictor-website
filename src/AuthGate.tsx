@@ -40,7 +40,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <div className="auth-card">
           <h1>Not configured</h1>
           <p className="auth-text">
-            Set <code>VITE_SUPABASE_ANON_KEY</code> (see <code>.env.example</code>) and rebuild.
+            Set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code> (see{" "}
+            <code>.env.example</code>) and rebuild.
           </p>
         </div>
       </main>

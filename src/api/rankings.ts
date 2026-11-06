@@ -1,4 +1,4 @@
-import { fetchAsUser } from "../supabase";
+import { fetchAsUser, functionUrl } from "../supabase";
 
 export type Position = "QB" | "RB" | "WR" | "TE" | "K";
 
@@ -37,7 +37,6 @@ export type PlayerProjections = {
   players: Player[];
 };
 
-const projectionsUrl = "https://fkhwdotwrfedwaddaalv.supabase.co/functions/v1/project-players";
 
 const serverStatKeys: Record<keyof PlayerStats, string> = {
   passingYards: "pass_yds",
@@ -131,7 +130,7 @@ function parseWeek(value: unknown, games: unknown): ProjectionWeek | null {
 }
 
 export async function getPlayerProjections(signal?: AbortSignal): Promise<PlayerProjections> {
-  const response = await fetchAsUser(projectionsUrl, signal);
+  const response = await fetchAsUser(functionUrl("project-players"), signal);
   if (!response.ok) {
     throw new Error(`Could not load player projections (server returned ${response.status}).`);
   }

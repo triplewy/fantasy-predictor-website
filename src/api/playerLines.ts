@@ -1,4 +1,4 @@
-import { fetchAsUser } from "../supabase";
+import { fetchAsUser, functionUrl } from "../supabase";
 
 export type PlayerLine = {
   bookmaker: string;
@@ -15,7 +15,6 @@ export type PlayerLines = {
   lines: PlayerLine[];
 };
 
-const playerLinesUrl = "https://fkhwdotwrfedwaddaalv.supabase.co/functions/v1/player-lines";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -56,7 +55,7 @@ export async function getPlayerLines(
   gameId: string,
   signal?: AbortSignal,
 ): Promise<PlayerLines> {
-  const url = new URL(playerLinesUrl);
+  const url = functionUrl("player-lines");
   url.searchParams.set("player_id", playerId);
   url.searchParams.set("game_id", gameId);
 
