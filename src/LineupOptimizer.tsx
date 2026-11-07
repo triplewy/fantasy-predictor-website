@@ -136,7 +136,7 @@ export function LineupOptimizer({
     () => roster.map((saved) => ({ ...saved, team: listedById.get(saved.id)?.team ?? saved.team })),
     [roster, listedById],
   );
-  const { projections, gamesError, isLoadingGames } = useRosterProjections(rosterWithTeams);
+  const { projections, gamesError, isLoadingGames, hasNoGames } = useRosterProjections(rosterWithTeams);
   const rosterIds = useMemo(() => new Set(roster.map((player) => player.id)), [roster]);
 
   // Search the full player list; names starting with the query come first.
@@ -381,6 +381,11 @@ export function LineupOptimizer({
           <p className="lineup-note" role="status">Loading bookmaker lines and calculating projections…</p>
         )}
         {gamesError && <p className="lineup-note error-state" role="alert">{gamesError}</p>}
+        {hasNoGames && (
+          <p className="lineup-note error-state" role="alert">
+            No games were returned for this week ({weekRangeLabel()}), so no projections can be calculated.
+          </p>
+        )}
         {roster.length === 0 && (
           <p className="lineup-note">Your team is empty. Search above to add your players; they're saved in this browser.</p>
         )}

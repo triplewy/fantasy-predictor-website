@@ -4,6 +4,7 @@ import { getPlayerLines, type PlayerLines } from "./api/playerLines";
 import type { PlayerStats } from "./api/rankings";
 import { projectStatsFromLines } from "./expectedStat";
 import { currentNflWeek } from "./nflWeek";
+import { teamCode } from "./teams";
 
 export type PlayerProjection =
   | { status: "loading" }
@@ -93,13 +94,15 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
       if (isCurrent) setResults((current) => new Map(current).set(id, projection));
     };
 
+    const unmatchedTeams = new Set<string>();
     for (const { id, team } of roster) {
-      const game = gameByTeam.get(team);
+      const game = gameByTeam.get(teamCode(team));
+      if (!game) unmatchedTeams.add(team);
       if (!game) {
         update(id, { status: "no-game" });
         continue;
       }
-      const opponent = opponentLabel(game, team);
+      const opponent = opponentLabel(game, teamCode(team));
       loadLines(id, game.id)
         .then(({ lines }) => {
           if (lines.length === 0) return update(id, { status: "no-lines", opponent });
@@ -109,6 +112,12 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
         .catch((error: unknown) =>
           update(id, { status: "error", message: error instanceof Error ? error.message : "Could not load lines." }),
         );
+    }
+    if (unmatchedTeams.size > 0) {
+      console.info(
+        `No game this week for team(s) ${[...unmatchedTeams].join(", ")}. Teams with games:`,
+        [...gameByTeam.keys()].sort().join(", ") || "(none)",
+      );
     }
     return () => {
       isCurrent = false;
@@ -120,5 +129,11 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
   const projections = new Map<string, PlayerProjection>(
     roster.map(({ id }) => [id, gamesError ? { status: "error", message: gamesError } : (results.get(id) ?? { status: "loading" })]),
   );
-  return { projections, gamesError, isLoadingGames: games === null && gamesError === null };
+  return {
+    projections,
+    gamesError,
+    isLoadingGames: games === null && gamesError === null,
+    /** Games loaded, but none were returned or recognized for this week. */
+    hasNoGames: games !== null && games.length === 0,
+  };
 }

@@ -1,5 +1,6 @@
 import { fetchAsUser, functionUrl } from "../supabase";
 import type { Position } from "./rankings";
+import { teamCode } from "../teams";
 
 /** A player from the full /players list, used to build a team (no projections). */
 export type ListedPlayer = {
@@ -7,7 +8,7 @@ export type ListedPlayer = {
   id: string;
   name: string;
   position: Position;
-  /** Team abbreviation, or "FA" for free agents. */
+  /** Canonical team code (e.g. "CIN"), or "FA" for free agents. */
   team: string;
 };
 
@@ -31,7 +32,9 @@ function parseListedPlayer(value: unknown): ListedPlayer | undefined {
   const name = firstString(value.player, value.name, value.full_name, combinedName);
   const position = typeof value.position === "string" ? positionMap[value.position.toUpperCase()] : undefined;
   if (!id || !name || !position) return undefined;
-  return { id, name, position, team: firstString(value.team)?.toUpperCase() ?? "FA" };
+  // /players sends the team as team_id; accept team too. Normalized so it matches /games.
+  const team = firstString(value.team_id, value.team);
+  return { id, name, position, team: team ? teamCode(team) : "FA" };
 }
 
 /** Every supported fantasy player from /players, sorted by name. */
