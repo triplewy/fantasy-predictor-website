@@ -42,6 +42,8 @@ export type RosterPlayer = Pick<Player, "id" | "name" | "position" | "team"> & {
   breakdown: { label: string; points: number }[];
   opponent: string | null;
   hasProjection: boolean;
+  /** Why there's no projection yet, e.g. "Loading lines…" or "Bye week". */
+  note: string | null;
 };
 
 export type LineupSlot = { slot: SlotType; player: RosterPlayer | null };

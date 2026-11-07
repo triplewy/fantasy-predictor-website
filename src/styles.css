@@ -1319,6 +1319,10 @@ tbody .lines-row:hover {
   font-style: italic;
 }
 
+.lineup-table .points .lineup-empty {
+  white-space: nowrap;
+}
+
 .bench-heading {
   margin: 18px 0 8px !important;
 }

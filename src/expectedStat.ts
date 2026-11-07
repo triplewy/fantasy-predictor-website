@@ -1,4 +1,6 @@
 import type { PlayerLine } from "./api/playerLines";
+import type { PlayerStats } from "./api/rankings";
+import { marketInfo } from "./markets";
 
 /**
  * Estimate a stat by summing raw implied probabilities from alternate Over odds.
@@ -81,4 +83,29 @@ export function bookmakerMeans(lines: PlayerLine[]): {
   }
   const average = means.length > 0 ? means.reduce((total, item) => total + item.mean, 0) / means.length : null;
   return { means, excluded, average };
+}
+
+const emptyStats: PlayerStats = {
+  passingYards: 0,
+  passingTouchdowns: 0,
+  interceptions: 0,
+  rushingYards: 0,
+  receptions: 0,
+  receivingYards: 0,
+  touchdowns: 0,
+  kickingPoints: 0,
+};
+
+/**
+ * Projected stat line from a player's raw bookmaker lines: for each stat, the average of
+ * every bookmaker's expected value — the same calculation the backend's projections use.
+ * Stats with no usable lines are 0. Lines must be in API order (see calcExpectedStatFromAlternate).
+ */
+export function projectStatsFromLines(lines: PlayerLine[]): PlayerStats {
+  const stats = { ...emptyStats };
+  for (const stat of Object.keys(stats) as (keyof PlayerStats)[]) {
+    const statLines = lines.filter((line) => marketInfo[line.market]?.stat === stat);
+    stats[stat] = bookmakerMeans(statLines).average ?? 0;
+  }
+  return stats;
 }

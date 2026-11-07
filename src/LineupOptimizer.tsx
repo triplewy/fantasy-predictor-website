@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAllPlayers, type ListedPlayer } from "./api/players";
 import type { Player, Position } from "./api/rankings";
+import { currentNflWeek } from "./nflWeek";
+import { getPointsBreakdown, type ScoringSettings } from "./scoring";
+import { useRosterProjections, type PlayerProjection } from "./useRosterProjections";
 import {
   lineupPresets,
   optimizeLineup,
@@ -11,7 +14,6 @@ import {
 } from "./lineup";
 import { readStorageJson, writeStorageJson } from "./storage";
 
-type ProjectedPlayer = Player & { points: number; breakdown: { label: string; points: number }[] };
 type SavedRosterPlayer = Pick<Player, "id" | "name" | "position" | "team">;
 
 const rosterStorageKey = "fantasy-my-team";
@@ -64,6 +66,28 @@ function readFormat(): LineupFormat {
   ) as LineupFormat;
 }
 
+/** Short label for a player who has no projection (yet). */
+function projectionNote(projection: PlayerProjection): string | null {
+  switch (projection.status) {
+    case "loading":
+      return "Loading lines…";
+    case "no-game":
+      return "No game this week";
+    case "no-lines":
+      return "No lines yet";
+    case "error":
+      return "Lines unavailable";
+    case "ready":
+      return null;
+  }
+}
+
+function weekRangeLabel() {
+  const { from, to } = currentNflWeek();
+  const format = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return `Week of ${format(from)} – ${format(to)}`;
+}
+
 function formatPoints(points: number) {
   return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)}`;
 }
@@ -76,18 +100,12 @@ function presetName(format: LineupFormat) {
 }
 
 export function LineupOptimizer({
-  players,
-  isLoading,
-  error,
+  settings,
   scoringControl,
-  weekLabel,
 }: {
-  /** Every player with this week's projected points under the current scoring settings. */
-  players: ProjectedPlayer[];
-  isLoading: boolean;
-  error: string | null;
+  /** Scoring settings used to turn each player's projected stats into points. */
+  settings: ScoringSettings;
   scoringControl: ReactNode;
-  weekLabel: string | null;
 }) {
   const [roster, setRoster] = useState<SavedRosterPlayer[]>(readRoster);
   const [format, setFormat] = useState<LineupFormat>(readFormat);
@@ -112,35 +130,52 @@ export function LineupOptimizer({
   useEffect(() => writeStorageJson(rosterStorageKey, roster), [roster]);
   useEffect(() => writeStorageJson(formatStorageKey, format), [format]);
 
-  const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
+  const listedById = useMemo(() => new Map((playerList ?? []).map((player) => [player.id, player])), [playerList]);
+  // Latest team from /players (trades, signings), falling back to the one saved when added.
+  const rosterWithTeams = useMemo(
+    () => roster.map((saved) => ({ ...saved, team: listedById.get(saved.id)?.team ?? saved.team })),
+    [roster, listedById],
+  );
+  const { projections, gamesError, isLoadingGames } = useRosterProjections(rosterWithTeams);
   const rosterIds = useMemo(() => new Set(roster.map((player) => player.id)), [roster]);
 
-  // Search the full player list; players projected this week sort first (by points),
-  // then everyone else alphabetically.
+  // Search the full player list; names starting with the query come first.
   const suggestions = useMemo(() => {
     const text = query.trim().toLowerCase();
     if (!text || !playerList) return [];
+    const startsWith = (player: ListedPlayer) => player.name.toLowerCase().startsWith(text);
     return playerList
       .filter((player) => !rosterIds.has(player.id))
       .filter((player) => `${player.name} ${player.team}`.toLowerCase().includes(text))
-      .map((player) => ({ ...player, projectedPoints: playersById.get(player.id)?.points ?? null }))
-      .sort((a, b) => (b.projectedPoints ?? -Infinity) - (a.projectedPoints ?? -Infinity) || a.name.localeCompare(b.name))
+      .sort((a, b) => Number(startsWith(b)) - Number(startsWith(a)) || a.name.localeCompare(b.name))
       .slice(0, 8);
-  }, [playerList, playersById, query, rosterIds]);
+  }, [playerList, query, rosterIds]);
 
-  // Rostered players without a projection this week (bye, injury, not listed) score 0.
-  const rosterWithPoints: RosterPlayer[] = roster.map((saved) => {
-    const projected = playersById.get(saved.id);
+  // Points come from each player's projected stats (computed from their raw lines) under
+  // the current scoring. Players without a projection count as 0 until one arrives.
+  const rosterWithPoints: RosterPlayer[] = rosterWithTeams.map((saved) => {
+    const projection = projections.get(saved.id) ?? { status: "loading" as const };
+    if (projection.status !== "ready") {
+      return {
+        ...saved,
+        points: 0,
+        breakdown: [],
+        opponent: projection.status === "no-lines" ? projection.opponent : null,
+        hasProjection: false,
+        note: projectionNote(projection),
+      };
+    }
+    const breakdown = getPointsBreakdown(projection.stats, saved.position, settings);
     return {
       ...saved,
-      // Prefer this week's team (trades, signings) over the one saved when added.
-      team: projected?.team ?? saved.team,
-      points: projected?.points ?? 0,
-      breakdown: projected?.breakdown ?? [],
-      opponent: projected?.opponent ?? null,
-      hasProjection: projected !== undefined,
+      points: breakdown.reduce((total, item) => total + item.points, 0),
+      breakdown,
+      opponent: projection.opponent,
+      hasProjection: true,
+      note: null,
     };
   });
+  const isLoadingProjections = isLoadingGames || rosterWithPoints.some((player) => player.note === "Loading lines…");
   const lineup = optimizeLineup(rosterWithPoints, format);
   const starterCount = slotTypes.reduce((total, slot) => total + format[slot], 0);
 
@@ -176,7 +211,7 @@ export function LineupOptimizer({
         <td className="lineup-slot">{slotLabel}</td>
         <td>{player ? renderPlayerCell(player) : <span className="lineup-empty">{emptyLabel}</span>}</td>
         <td className="points">
-          {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">No proj</span>}
+          {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">{player.note}</span>}
         </td>
         <td className="breakdown">
           {player && player.breakdown.length > 0 && (
@@ -217,7 +252,7 @@ export function LineupOptimizer({
           <h2>Lineup optimizer</h2>
           <p>
             Add your team and the best lineup is filled from this week's projections
-            {weekLabel && ` · ${weekLabel}`}
+            {` · ${weekRangeLabel()}`}
           </p>
         </div>
       </div>
@@ -329,8 +364,7 @@ export function LineupOptimizer({
                   <button type="button" onClick={() => addPlayer(player)}>
                     <span className="lineup-name">{player.name}</span>
                     <span className="lineup-meta">
-                      {player.position} · {player.team} ·{" "}
-                      {player.projectedPoints === null ? "no projection this week" : `${player.projectedPoints.toFixed(1)} pts`}
+                      {player.position} · {player.team}
                     </span>
                   </button>
                 </li>
@@ -343,8 +377,10 @@ export function LineupOptimizer({
           )}
         </div>
 
-        {isLoading && <p className="lineup-note" role="status">Loading this week's projections…</p>}
-        {error && <p className="lineup-note error-state" role="alert">{error}</p>}
+        {isLoadingProjections && (
+          <p className="lineup-note" role="status">Loading bookmaker lines and calculating projections…</p>
+        )}
+        {gamesError && <p className="lineup-note error-state" role="alert">{gamesError}</p>}
         {roster.length === 0 && (
           <p className="lineup-note">Your team is empty. Search above to add your players; they're saved in this browser.</p>
         )}
@@ -383,9 +419,10 @@ export function LineupOptimizer({
             </div>
           </>
         )}
-        {rosterWithPoints.some((player) => !player.hasProjection) && (
+        {rosterWithPoints.some((player) => !player.hasProjection && !player.note?.startsWith("Loading")) && (
           <p className="lineup-note">
-            "No proj" players aren't in this week's projections (bye, injury or no lines yet) and count as 0.
+            Players without a projection (no game this week, or no bookmaker lines yet) count as 0. Projections
+            are calculated from each player's raw bookmaker lines.
           </p>
         )}
       </div>

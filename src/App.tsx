@@ -5,177 +5,21 @@ import { currentNflWeek } from "./nflWeek";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
-  getPlayerProjections,
-  type Player,
-  type PlayerStats,
-  type Position,
-  type ProjectionWeek,
-} from "./api/rankings";
+  getPointsBreakdown,
+  scoringPresets,
+  scoringSettingFields,
+  type BreakdownItem,
+  type ScoringFormat,
+  type ScoringSettingKey,
+  type ScoringSettings,
+} from "./scoring";
+import { getPlayerProjections, type Player, type Position, type ProjectionWeek } from "./api/rankings";
 
 type PositionFilter = "ALL" | "FLEX" | Position;
-type ScoringFormat = "PPR" | "Half PPR" | "Standard" | "Custom";
-
 const positions: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K"];
 const excludedPositions: ("ALL" | Position)[] = ["ALL", "QB", "RB", "WR", "TE", "K"];
-const scoringPresets = {
-  PPR: {
-    passingYards: 1,
-    passingYardsPer: 25,
-    passingTouchdown: 4,
-    interception: -2,
-    rushingYards: 1,
-    rushingYardsPer: 10,
-    rushingTouchdown: 6,
-    reception: 1,
-    tightEndReceptionBonus: 0,
-    receivingYards: 1,
-    receivingYardsPer: 10,
-    receivingTouchdown: 6,
-    fumbleLost: -2,
-    fieldGoalUnder40: 3,
-    fieldGoal40To49: 4,
-    fieldGoal50Plus: 5,
-  },
-  "Half PPR": {
-    passingYards: 1,
-    passingYardsPer: 25,
-    passingTouchdown: 4,
-    interception: -2,
-    rushingYards: 1,
-    rushingYardsPer: 10,
-    rushingTouchdown: 6,
-    reception: 0.5,
-    tightEndReceptionBonus: 0,
-    receivingYards: 1,
-    receivingYardsPer: 10,
-    receivingTouchdown: 6,
-    fumbleLost: -2,
-    fieldGoalUnder40: 3,
-    fieldGoal40To49: 4,
-    fieldGoal50Plus: 5,
-  },
-  Standard: {
-    passingYards: 1,
-    passingYardsPer: 25,
-    passingTouchdown: 4,
-    interception: -2,
-    rushingYards: 1,
-    rushingYardsPer: 10,
-    rushingTouchdown: 6,
-    reception: 0,
-    tightEndReceptionBonus: 0,
-    receivingYards: 1,
-    receivingYardsPer: 10,
-    receivingTouchdown: 6,
-    fumbleLost: -2,
-    fieldGoalUnder40: 3,
-    fieldGoal40To49: 4,
-    fieldGoal50Plus: 5,
-  },
-} as const;
-
-type ScoringSettingKey = keyof typeof scoringPresets.PPR;
-type ScoringSettings = Record<ScoringSettingKey, number>;
-
-const scoringSettingFields: {
-  key: ScoringSettingKey;
-  label: string;
-  unit: string;
-  step?: number;
-}[] = [
-  { key: "passingYards", label: "Passing yards", unit: "pts" },
-  { key: "passingYardsPer", label: "Passing yards per", unit: "yds", step: 1 },
-  { key: "passingTouchdown", label: "Passing touchdown", unit: "pts" },
-  { key: "interception", label: "Interception", unit: "pts" },
-  { key: "rushingYards", label: "Rushing yards", unit: "pts" },
-  { key: "rushingYardsPer", label: "Rushing yards per", unit: "yds", step: 1 },
-  { key: "rushingTouchdown", label: "Rushing touchdown", unit: "pts" },
-  { key: "reception", label: "Reception", unit: "pts" },
-  { key: "tightEndReceptionBonus", label: "TE reception bonus", unit: "pts" },
-  { key: "receivingYards", label: "Receiving yards", unit: "pts" },
-  { key: "receivingYardsPer", label: "Receiving yards per", unit: "yds", step: 1 },
-  { key: "receivingTouchdown", label: "Receiving touchdown", unit: "pts" },
-  { key: "fumbleLost", label: "Fumble lost", unit: "pts" },
-  { key: "fieldGoalUnder40", label: "Field goal under 40 yds", unit: "pts" },
-  { key: "fieldGoal40To49", label: "Field goal 40–49 yds", unit: "pts" },
-  { key: "fieldGoal50Plus", label: "Field goal 50+ yds", unit: "pts" },
-] as const;
-
-type BreakdownItem = { key: keyof PlayerStats; label: string; points: number };
-
-function formatStat(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
-}
 
 type RankedPlayer = Player & { rank: number; points: number; breakdown: BreakdownItem[] };
-
-function yardagePoints(yards: number, points: number, per: number) {
-  return per > 0 ? (yards / per) * points : 0;
-}
-
-function getPointsBreakdown(
-  stats: PlayerStats,
-  position: Position,
-  settings: ScoringSettings,
-): BreakdownItem[] {
-  const touchdownPoints =
-    position === "WR" || position === "TE" ? settings.receivingTouchdown : settings.rushingTouchdown;
-  const items: (BreakdownItem & { value: number })[] = [
-    {
-      key: "passingYards",
-      value: stats.passingYards,
-      label: `${formatStat(stats.passingYards)} pass yds`,
-      points: yardagePoints(stats.passingYards, settings.passingYards, settings.passingYardsPer),
-    },
-    {
-      key: "passingTouchdowns",
-      value: stats.passingTouchdowns,
-      label: `${formatStat(stats.passingTouchdowns)} pass TD`,
-      points: stats.passingTouchdowns * settings.passingTouchdown,
-    },
-    {
-      key: "interceptions",
-      value: stats.interceptions,
-      label: `${formatStat(stats.interceptions)} INT`,
-      points: stats.interceptions * settings.interception,
-    },
-    {
-      key: "rushingYards",
-      value: stats.rushingYards,
-      label: `${formatStat(stats.rushingYards)} rush yds`,
-      points: yardagePoints(stats.rushingYards, settings.rushingYards, settings.rushingYardsPer),
-    },
-    {
-      key: "receptions",
-      value: stats.receptions,
-      label: `${formatStat(stats.receptions)} rec`,
-      points:
-        stats.receptions *
-        (settings.reception + (position === "TE" ? settings.tightEndReceptionBonus : 0)),
-    },
-    {
-      key: "receivingYards",
-      value: stats.receivingYards,
-      label: `${formatStat(stats.receivingYards)} rec yds`,
-      points: yardagePoints(stats.receivingYards, settings.receivingYards, settings.receivingYardsPer),
-    },
-    {
-      key: "touchdowns",
-      value: stats.touchdowns,
-      label: `${formatStat(stats.touchdowns)} TD`,
-      points: stats.touchdowns * touchdownPoints,
-    },
-    {
-      key: "kickingPoints",
-      value: stats.kickingPoints,
-      label: "Kicking",
-      points: stats.kickingPoints,
-    },
-  ];
-  return items
-    .filter((item) => item.value !== 0)
-    .map(({ key, label, points }) => ({ key, label, points }));
-}
 
 function formatWeek(week: ProjectionWeek | null, updatedAt: Date | null) {
   const format = (date: Date) =>
@@ -337,7 +181,15 @@ function App() {
     setExpandedPlayerId((current) => (current === id ? null : id));
   }
 
+  // Projections only power the Rankings page, so they're fetched the first time it's shown;
+  // the Lineup optimizer computes its own projections from raw lines.
+  const [hasRequestedProjections, setHasRequestedProjections] = useState(false);
   useEffect(() => {
+    if (page === "rankings") setHasRequestedProjections(true);
+  }, [page]);
+
+  useEffect(() => {
+    if (!hasRequestedProjections) return;
     const controller = new AbortController();
 
     getPlayerProjections(currentNflWeek(), controller.signal)
@@ -357,7 +209,7 @@ function App() {
       });
 
     return () => controller.abort();
-  }, []);
+  }, [hasRequestedProjections]);
 
   // Fill in details for exclusions saved by older versions (cookie IDs or names only).
   useEffect(() => {
@@ -412,22 +264,18 @@ function App() {
     [excludedPlayers],
   );
 
-  // Every player's points under the current scoring, sorted. The lineup optimizer uses all
-  // of them; rankings leave out excluded players and assign ranks per position tab below.
-  const allScoredPlayers = useMemo(
+  // Sorted by projected points; ranks are assigned per position tab below.
+  const scoredPlayers = useMemo(
     () =>
       players
+        .filter((player) => !excludedSet.has(player.id))
         .map((player) => {
           const breakdown = getPointsBreakdown(player.stats, player.position, settings);
           const points = breakdown.reduce((total, item) => total + item.points, 0);
           return { ...player, breakdown, points };
         })
         .sort((a, b) => b.points - a.points),
-    [players, settings],
-  );
-  const scoredPlayers = useMemo(
-    () => allScoredPlayers.filter((player) => !excludedSet.has(player.id)),
-    [allScoredPlayers, excludedSet],
+    [players, settings, excludedSet],
   );
 
   const visibleExcludedPlayers = excludedPlayers.filter(
@@ -544,13 +392,7 @@ function App() {
       </div>
 
       {page === "lineup" ? (
-        <LineupOptimizer
-          players={allScoredPlayers}
-          isLoading={isLoadingPlayers}
-          error={playersError}
-          scoringControl={scoringControl}
-          weekLabel={formatWeek(projectionWeek, projectionsUpdatedAt)}
-        />
+        <LineupOptimizer settings={settings} scoringControl={scoringControl} />
       ) : (
 
         <section className="player-list" aria-label="Player rankings">
@@ -778,7 +620,11 @@ function App() {
           </div>
         </section>
       )}
-      <footer>Projected stats are provided by the server; points and ranks are calculated from your scoring settings.</footer>
+      <footer>
+        {page === "lineup"
+          ? "Projections are calculated in your browser from each player's raw bookmaker lines and scored with your settings."
+          : "Projected stats are provided by the server; points and ranks are calculated from your scoring settings."}
+      </footer>
     </main>
   );
 }
