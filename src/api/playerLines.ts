@@ -83,3 +83,41 @@ export async function getPlayerLines(
   const commenceTime = isRecord(data.game) ? parseDate(data.game.commence_time) : null;
   return { commenceTime, lines };
 }
+
+// One cache for the page's lifetime, shared by the Rankings panel and the Lineup optimizer,
+// so a player's lines are fetched once no matter where they're shown.
+const linesRequests = new Map<string, Promise<PlayerLines>>();
+const loadedLines = new Map<string, PlayerLines>();
+const cacheKey = (playerId: string, gameId: string) => `${playerId}|${gameId}`;
+
+/** Lines already loaded for this player and game, if any (for rendering without a flash). */
+export function cachedPlayerLines(playerId: string, gameId: string): PlayerLines | undefined {
+  return loadedLines.get(cacheKey(playerId, gameId));
+}
+
+/**
+ * A player's lines for a game, fetched at most once. `fetch` lets callers wrap the request
+ * (e.g. in a concurrency limiter). Failed requests are evicted so a retry refetches.
+ */
+export function loadPlayerLines(
+  playerId: string,
+  gameId: string,
+  fetch: () => Promise<PlayerLines> = () => getPlayerLines(playerId, gameId),
+): Promise<PlayerLines> {
+  const key = cacheKey(playerId, gameId);
+  let request = linesRequests.get(key);
+  if (!request) {
+    request = fetch().then(
+      (result) => {
+        loadedLines.set(key, result);
+        return result;
+      },
+      (error: unknown) => {
+        linesRequests.delete(key);
+        throw error;
+      },
+    );
+    linesRequests.set(key, request);
+  }
+  return request;
+}

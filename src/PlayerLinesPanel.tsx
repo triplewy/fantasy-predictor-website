@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getPlayerLines, type PlayerLine, type PlayerLines } from "./api/playerLines";
+import { cachedPlayerLines, loadPlayerLines, type PlayerLine, type PlayerLines } from "./api/playerLines";
 import type { PlayerStats } from "./api/rankings";
 import { ImpliedProbabilityChart } from "./ImpliedProbabilityChart";
 import { bookmakerColor, sortBookmakers } from "./bookmakerColors";
@@ -47,8 +47,6 @@ function mergeAnytimeTouchdowns(lines: PlayerLine[]): PlayerLine[] {
   );
 }
 
-// Lines rarely change while the page is open, so each player's lines are fetched once.
-const linesCache = new Map<string, PlayerLines>();
 
 function marketLabel(market: string) {
   return (
@@ -142,7 +140,7 @@ function MarketTable({
 
 export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
   const cacheKey = `${player.id}|${player.gameId}`;
-  const [data, setData] = useState<PlayerLines | null>(() => linesCache.get(cacheKey) ?? null);
+  const [data, setData] = useState<PlayerLines | null>(() => cachedPlayerLines(player.id, player.gameId) ?? null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [view, setView] = useState<"chart" | "table">("chart");
@@ -150,23 +148,24 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
   const [focusedBookmaker, setFocusedBookmaker] = useState<string | null>(null);
 
   useEffect(() => {
-    if (linesCache.has(cacheKey)) {
-      setData(linesCache.get(cacheKey) ?? null);
+    const cached = cachedPlayerLines(player.id, player.gameId);
+    if (cached) {
+      setData(cached);
       return;
     }
-    const controller = new AbortController();
+    // The request is shared (other views may be waiting on it), so it isn't aborted on
+    // unmount; results are just ignored once this panel is gone.
+    let isCurrent = true;
     setData(null);
     setError(null);
-    getPlayerLines(player.id, player.gameId, controller.signal)
-      .then((result) => {
-        linesCache.set(cacheKey, result);
-        setData(result);
-      })
+    loadPlayerLines(player.id, player.gameId)
+      .then((result) => isCurrent && setData(result))
       .catch((caught: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(caught instanceof Error ? caught.message : "Could not load bookmaker lines.");
+        if (isCurrent) setError(caught instanceof Error ? caught.message : "Could not load bookmaker lines.");
       });
-    return () => controller.abort();
+    return () => {
+      isCurrent = false;
+    };
   }, [cacheKey, player.id, player.gameId, attempt]);
 
   if (error) {

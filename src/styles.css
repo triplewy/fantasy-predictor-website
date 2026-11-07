@@ -675,7 +675,8 @@ tbody .lines-row:hover {
 }
 
 .prob-chart,
-.means-strip {
+.means-strip,
+.lines-legend {
   --chart-surface: #fff;
   --chart-grid: #e8ebe8;
   --chart-axis: #c9cfca;
@@ -1294,6 +1295,8 @@ tbody .lines-row:hover {
 .lineup-table-scroll {
   position: relative;
   overflow-x: auto;
+  /* Lets the expanded lines panel size itself to the visible width (see .lines-panel). */
+  container-type: inline-size;
   border: 1px solid #e3e8e4;
   border-radius: 5px;
 }
@@ -1304,6 +1307,15 @@ tbody .lines-row:hover {
 
 .lineup-table .breakdown {
   min-width: 220px;
+}
+
+.lineup-toggle {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.lineup-toggle .row-chevron {
+  margin-top: 3px;
 }
 
 .lineup-slot {

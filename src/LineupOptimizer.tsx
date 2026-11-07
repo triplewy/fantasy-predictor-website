@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAllPlayers, type ListedPlayer } from "./api/players";
-import type { Player, Position } from "./api/rankings";
+import type { Player, PlayerStats, Position } from "./api/rankings";
 import { currentNflWeek } from "./nflWeek";
+import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import { getPointsBreakdown, type ScoringSettings } from "./scoring";
 import { useRosterProjections, type PlayerProjection } from "./useRosterProjections";
 import {
@@ -31,6 +32,18 @@ function loadPlayerList() {
   return playerListRequest;
 }
 const maxSlotsPerType = 4;
+
+// Placeholder stats for the lines panel when a player has a game but no lines yet.
+const emptyStats: PlayerStats = {
+  passingYards: 0,
+  passingTouchdowns: 0,
+  interceptions: 0,
+  rushingYards: 0,
+  receptions: 0,
+  receivingYards: 0,
+  touchdowns: 0,
+  kickingPoints: 0,
+};
 
 function isSavedRosterPlayer(value: unknown): value is SavedRosterPlayer {
   if (typeof value !== "object" || value === null) return false;
@@ -111,6 +124,7 @@ export function LineupOptimizer({
   const [format, setFormat] = useState<LineupFormat>(readFormat);
   const [query, setQuery] = useState("");
   const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false);
+  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [playerList, setPlayerList] = useState<ListedPlayer[] | null>(null);
   const [playerListError, setPlayerListError] = useState<string | null>(null);
 
@@ -160,6 +174,8 @@ export function LineupOptimizer({
         ...saved,
         points: 0,
         breakdown: [],
+        stats: null,
+        gameId: projection.status === "no-lines" ? projection.gameId : null,
         opponent: projection.status === "no-lines" ? projection.opponent : null,
         hasProjection: false,
         note: projectionNote(projection),
@@ -170,6 +186,8 @@ export function LineupOptimizer({
       ...saved,
       points: breakdown.reduce((total, item) => total + item.points, 0),
       breakdown,
+      stats: projection.stats,
+      gameId: projection.gameId,
       opponent: projection.opponent,
       hasProjection: true,
       note: null,
@@ -206,40 +224,87 @@ export function LineupOptimizer({
   }
 
   function renderRow(slotLabel: string, player: RosterPlayer | null, emptyLabel: string, key: string) {
+    // Players with a game this week can be opened to see their raw bookmaker lines.
+    const canExpand = player !== null && player.gameId !== null;
+    const isExpanded = canExpand && expandedPlayerId === player.id;
+    const toggle = () => canExpand && setExpandedPlayerId(isExpanded ? null : player.id);
     return (
-      <tr key={key}>
-        <td className="lineup-slot">{slotLabel}</td>
-        <td>{player ? renderPlayerCell(player) : <span className="lineup-empty">{emptyLabel}</span>}</td>
-        <td className="points">
-          {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">{player.note}</span>}
-        </td>
-        <td className="breakdown">
-          {player && player.breakdown.length > 0 && (
-            <ul className="breakdown-list">
-              {player.breakdown.map((item) => (
-                <li key={item.label}>
-                  <span>{item.label}</span>
-                  <span className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}>
-                    {formatPoints(item.points)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </td>
-        <td className="action">
-          {player && (
-            <button
-              type="button"
-              className="row-action"
-              aria-label={`Remove ${player.name} from your team`}
-              onClick={() => removePlayer(player.id)}
-            >
-              Remove
-            </button>
-          )}
-        </td>
-      </tr>
+      <Fragment key={key}>
+        <tr
+          className={canExpand ? (isExpanded ? "player-row expanded" : "player-row") : undefined}
+          onClick={toggle}
+        >
+          <td className="lineup-slot">{slotLabel}</td>
+          <td>
+            {!player ? (
+              <span className="lineup-empty">{emptyLabel}</span>
+            ) : canExpand ? (
+              <button
+                type="button"
+                className="row-toggle lineup-toggle"
+                aria-expanded={isExpanded}
+                aria-controls={`lineup-lines-${player.id}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  toggle();
+                }}
+              >
+                <span className="row-chevron" aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
+                <span>{renderPlayerCell(player)}</span>
+              </button>
+            ) : (
+              renderPlayerCell(player)
+            )}
+          </td>
+          <td className="points">
+            {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">{player.note}</span>}
+          </td>
+          <td className="breakdown">
+            {player && player.breakdown.length > 0 && (
+              <ul className="breakdown-list">
+                {player.breakdown.map((item) => (
+                  <li key={item.label}>
+                    <span>{item.label}</span>
+                    <span className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}>
+                      {formatPoints(item.points)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </td>
+          <td className="action">
+            {player && (
+              <button
+                type="button"
+                className="row-action"
+                aria-label={`Remove ${player.name} from your team`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  removePlayer(player.id);
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </td>
+        </tr>
+        {isExpanded && player.gameId && (
+          <tr className="lines-row" id={`lineup-lines-${player.id}`}>
+            <td colSpan={5}>
+              <PlayerLinesPanel
+                player={{
+                  id: player.id,
+                  gameId: player.gameId,
+                  name: player.name,
+                  stats: player.stats ?? emptyStats,
+                  breakdown: player.breakdown,
+                }}
+              />
+            </td>
+          </tr>
+        )}
+      </Fragment>
     );
   }
 

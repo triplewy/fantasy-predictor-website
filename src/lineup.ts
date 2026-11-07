@@ -1,4 +1,4 @@
-import type { Player, Position } from "./api/rankings";
+import type { Player, PlayerStats, Position } from "./api/rankings";
 
 export type SlotType = "QB" | "RB" | "WR" | "TE" | "FLEX" | "SUPERFLEX" | "K";
 
@@ -39,7 +39,11 @@ export const lineupPresets: { name: string; format: LineupFormat }[] = [
 export type RosterPlayer = Pick<Player, "id" | "name" | "position" | "team"> & {
   points: number;
   /** How the points add up, e.g. { label: "275 pass yds", points: 11 }. Empty without a projection. */
-  breakdown: { label: string; points: number }[];
+  breakdown: { key: keyof PlayerStats; label: string; points: number }[];
+  /** Projected stats, when available (for the bookmaker-lines panel). */
+  stats: PlayerStats | null;
+  /** This week's game, when the player has one (needed to load their lines). */
+  gameId: string | null;
   opponent: string | null;
   hasProjection: boolean;
   /** Why there's no projection yet, e.g. "Loading lines…" or "Bye week". */

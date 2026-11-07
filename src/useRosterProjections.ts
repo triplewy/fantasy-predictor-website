@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getGames, opponentLabel, type Game } from "./api/games";
-import { getPlayerLines, type PlayerLines } from "./api/playerLines";
+import { getPlayerLines, loadPlayerLines } from "./api/playerLines";
 import type { PlayerStats } from "./api/rankings";
 import { projectStatsFromLines } from "./expectedStat";
 import { currentNflWeek } from "./nflWeek";
@@ -9,13 +9,12 @@ import { teamCode } from "./teams";
 export type PlayerProjection =
   | { status: "loading" }
   | { status: "no-game" }
-  | { status: "no-lines"; opponent: string }
+  | { status: "no-lines"; opponent: string; gameId: string }
   | { status: "error"; message: string }
-  | { status: "ready"; stats: PlayerStats; opponent: string; lastUpdatedAt: Date | null };
+  | { status: "ready"; stats: PlayerStats; opponent: string; gameId: string; lastUpdatedAt: Date | null };
 
-// Cached for the page's lifetime: games for the week, and each player's lines per game.
+// Games for the week, cached for the page's lifetime (lines are cached in api/playerLines).
 let gamesRequest: Promise<Game[]> | null = null;
-const linesRequests = new Map<string, Promise<PlayerLines>>();
 
 function loadGames() {
   gamesRequest ??= getGames(currentNflWeek()).catch((error: unknown) => {
@@ -41,16 +40,7 @@ async function limited<T>(task: () => Promise<T>): Promise<T> {
 }
 
 function loadLines(playerId: string, gameId: string) {
-  const key = `${playerId}|${gameId}`;
-  let request = linesRequests.get(key);
-  if (!request) {
-    request = limited(() => getPlayerLines(playerId, gameId)).catch((error: unknown) => {
-      linesRequests.delete(key);
-      throw error;
-    });
-    linesRequests.set(key, request);
-  }
-  return request;
+  return loadPlayerLines(playerId, gameId, () => limited(() => getPlayerLines(playerId, gameId)));
 }
 
 /**
@@ -105,9 +95,9 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
       const opponent = opponentLabel(game, teamCode(team));
       loadLines(id, game.id)
         .then(({ lines }) => {
-          if (lines.length === 0) return update(id, { status: "no-lines", opponent });
+          if (lines.length === 0) return update(id, { status: "no-lines", opponent, gameId: game.id });
           const lastUpdatedAt = new Date(Math.max(...lines.map((line) => line.lastUpdatedAt.getTime())));
-          update(id, { status: "ready", stats: projectStatsFromLines(lines), opponent, lastUpdatedAt });
+          update(id, { status: "ready", stats: projectStatsFromLines(lines), opponent, gameId: game.id, lastUpdatedAt });
         })
         .catch((error: unknown) =>
           update(id, { status: "error", message: error instanceof Error ? error.message : "Could not load lines." }),
