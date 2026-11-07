@@ -277,6 +277,11 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
 
 type Page = "rankings" | "lineup";
 
+const pageTabs: { page: Page; href: string; title: string; description: string }[] = [
+  { page: "rankings", href: "#/", title: "Rankings", description: "Weekly projections for every player" },
+  { page: "lineup", href: "#/lineup", title: "Lineup optimizer", description: "Your team's best lineup this week" },
+];
+
 function pageFromHash(): Page {
   return window.location.hash === "#/lineup" ? "lineup" : "rankings";
 }
@@ -496,19 +501,19 @@ function App() {
 
   return (
     <main className="page">
-      <header className="page-header">
-        <p className="eyebrow">FANTASY FOOTBALL</p>
-        <h1>Player projections</h1>
-        <p className="subtitle">Weekly point projections for fantasy football players.</p>
-        <nav className="page-tabs" aria-label="Pages">
-          <a href="#/" className={page === "rankings" ? "page-tab active" : "page-tab"} aria-current={page === "rankings" ? "page" : undefined}>
-            Rankings
+      <nav className="page-tabs" aria-label="Pages">
+        {pageTabs.map((tab) => (
+          <a
+            key={tab.page}
+            href={tab.href}
+            className={page === tab.page ? "page-tab active" : "page-tab"}
+            aria-current={page === tab.page ? "page" : undefined}
+          >
+            <span className="page-tab-title">{tab.title}</span>
+            <span className="page-tab-description">{tab.description}</span>
           </a>
-          <a href="#/lineup" className={page === "lineup" ? "page-tab active" : "page-tab"} aria-current={page === "lineup" ? "page" : undefined}>
-            Lineup optimizer
-          </a>
-        </nav>
-      </header>
+        ))}
+      </nav>
 
       {page === "lineup" ? (
         <LineupOptimizer
@@ -516,7 +521,7 @@ function App() {
           isLoading={isLoadingPlayers}
           error={playersError}
           scoringControl={scoringControl}
-          weekLabel={projectionWeek ? formatWeek(projectionWeek) : "this week"}
+          weekLabel={projectionWeek ? formatWeek(projectionWeek) : null}
         />
       ) : (
 
