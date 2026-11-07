@@ -176,11 +176,25 @@ function getPointsBreakdown(
     .map(({ key, label, points }) => ({ key, label, points }));
 }
 
-function formatWeek(week: ProjectionWeek) {
+function formatWeek(week: ProjectionWeek | null, updatedAt: Date | null) {
   const format = (date: Date) =>
     date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const games = week.games > 0 ? ` · ${week.games} games` : "";
-  return `Week of ${format(week.start)} – ${format(week.end)}${games}`;
+  const parts: string[] = [];
+  if (week) {
+    parts.push(`Week of ${format(week.start)} – ${format(week.end)}`);
+    if (week.games > 0) parts.push(`${week.games} games`);
+  }
+  if (updatedAt) parts.push(`Updated ${formatUpdatedAt(updatedAt)}`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** "2:51 PM" today, "Thu 2:51 PM" within the past week, otherwise "Nov 6, 2:51 PM". */
+function formatUpdatedAt(date: Date) {
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const daysAgo = (Date.now() - date.getTime()) / 86_400_000;
+  if (new Date().toDateString() === date.toDateString()) return time;
+  if (daysAgo < 6) return `${date.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
+  return `${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })}, ${time}`;
 }
 
 function formatPoints(points: number) {
@@ -292,6 +306,7 @@ function App() {
   const [search, setSearch] = useState("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [projectionWeek, setProjectionWeek] = useState<ProjectionWeek | null>(null);
+  const [projectionsUpdatedAt, setProjectionsUpdatedAt] = useState<Date | null>(null);
   const [isLoadingPlayers, setIsLoadingPlayers] = useState(true);
   const [playersError, setPlayersError] = useState<string | null>(null);
   const [initialScoring] = useState(readScoringPreferences);
@@ -325,9 +340,10 @@ function App() {
     const controller = new AbortController();
 
     getPlayerProjections(controller.signal)
-      .then(({ players: loadedPlayers, week }) => {
+      .then(({ players: loadedPlayers, week, updatedAt }) => {
         setPlayers(loadedPlayers);
         setProjectionWeek(week);
+        setProjectionsUpdatedAt(updatedAt);
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
@@ -532,7 +548,7 @@ function App() {
           isLoading={isLoadingPlayers}
           error={playersError}
           scoringControl={scoringControl}
-          weekLabel={projectionWeek ? formatWeek(projectionWeek) : null}
+          weekLabel={formatWeek(projectionWeek, projectionsUpdatedAt)}
         />
       ) : (
 
@@ -540,7 +556,7 @@ function App() {
           <div className="list-heading">
             <div>
               <h2>All players</h2>
-              <p>{projectionWeek ? formatWeek(projectionWeek) : "Weekly point projections"}</p>
+              <p>{formatWeek(projectionWeek, projectionsUpdatedAt) ?? "Weekly point projections"}</p>
             </div>
             <label className="search">
               <span>Search</span>

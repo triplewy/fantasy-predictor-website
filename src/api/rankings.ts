@@ -34,6 +34,8 @@ export type ProjectionWeek = {
 
 export type PlayerProjections = {
   week: ProjectionWeek | null;
+  /** When the projections were last computed (top-level `updated_at`), if the API sends it. */
+  updatedAt: Date | null;
   players: Player[];
 };
 
@@ -119,6 +121,12 @@ function parsePlayer(value: unknown): Player | "unsupported-position" | undefine
   };
 }
 
+function parseTimestamp(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function parseWeek(value: unknown, games: unknown): ProjectionWeek | null {
   if (!isRecord(value) || typeof value.start !== "string" || typeof value.end !== "string") {
     return null;
@@ -159,5 +167,5 @@ export async function getPlayerProjections(signal?: AbortSignal): Promise<Player
     throw new Error("Could not load player projections: the server returned an invalid response.");
   }
 
-  return { week: parseWeek(data.week, data.games), players };
+  return { week: parseWeek(data.week, data.games), updatedAt: parseTimestamp(data.updated_at), players };
 }
