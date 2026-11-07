@@ -34,7 +34,7 @@ export type ProjectionWeek = {
 
 export type PlayerProjections = {
   week: ProjectionWeek | null;
-  /** When the projections were last computed (top-level `updated_at`), if the API sends it. */
+  /** When the projections were last updated (`last_updated_at`), if the API sends it. */
   updatedAt: Date | null;
   players: Player[];
 };
@@ -127,6 +127,20 @@ function parseTimestamp(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/**
+ * `last_updated_at` from the top level of the response, or else the newest one on the
+ * individual players. Null if neither is present or valid.
+ */
+function parseUpdatedAt(data: Record<string, unknown>): Date | null {
+  const topLevel = parseTimestamp(data.last_updated_at);
+  if (topLevel) return topLevel;
+  const playerTimes = (Array.isArray(data.players) ? data.players : [])
+    .map((player) => (isRecord(player) ? parseTimestamp(player.last_updated_at) : null))
+    .filter((date): date is Date => date !== null)
+    .map((date) => date.getTime());
+  return playerTimes.length > 0 ? new Date(Math.max(...playerTimes)) : null;
+}
+
 function parseWeek(value: unknown, games: unknown): ProjectionWeek | null {
   if (!isRecord(value) || typeof value.start !== "string" || typeof value.end !== "string") {
     return null;
@@ -167,5 +181,5 @@ export async function getPlayerProjections(signal?: AbortSignal): Promise<Player
     throw new Error("Could not load player projections: the server returned an invalid response.");
   }
 
-  return { week: parseWeek(data.week, data.games), updatedAt: parseTimestamp(data.updated_at), players };
+  return { week: parseWeek(data.week, data.games), updatedAt: parseUpdatedAt(data), players };
 }
