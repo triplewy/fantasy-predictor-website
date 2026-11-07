@@ -38,6 +38,8 @@ export const lineupPresets: { name: string; format: LineupFormat }[] = [
 /** A rostered player with this week's projected points (0 when there's no projection). */
 export type RosterPlayer = Pick<Player, "id" | "name" | "position" | "team"> & {
   points: number;
+  /** How the points add up, e.g. { label: "275 pass yds", points: 11 }. Empty without a projection. */
+  breakdown: { label: string; points: number }[];
   opponent: string | null;
   hasProjection: boolean;
 };

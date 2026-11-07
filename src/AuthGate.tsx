@@ -1,6 +1,17 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "./supabase";
+
+export const SessionContext = createContext<Session | null>(null);
+
+/** The signed-in session, for showing the user's email and a sign-out control. */
+export function useSession() {
+  return useContext(SessionContext);
+}
+
+export function signOut() {
+  return supabase.auth.signOut();
+}
 
 /**
  * Shows a Google sign-in screen until the user has a Supabase session, then renders the app.
@@ -78,15 +89,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return (
-    <>
-      <div className="auth-bar">
-        <span>{session.user.email}</span>
-        <button type="button" className="row-action" onClick={() => supabase.auth.signOut()}>
-          Sign out
-        </button>
-      </div>
-      {children}
-    </>
-  );
+  return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 }

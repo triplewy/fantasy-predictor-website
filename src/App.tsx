@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { signOut, useSession } from "./AuthGate";
 import { LineupOptimizer } from "./LineupOptimizer";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
@@ -277,9 +278,9 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
 
 type Page = "rankings" | "lineup";
 
-const pageTabs: { page: Page; href: string; title: string; description: string }[] = [
-  { page: "rankings", href: "#/", title: "Rankings", description: "Weekly projections for every player" },
-  { page: "lineup", href: "#/lineup", title: "Lineup optimizer", description: "Your team's best lineup this week" },
+const pageTabs: { page: Page; href: string; title: string }[] = [
+  { page: "rankings", href: "#/", title: "Rankings" },
+  { page: "lineup", href: "#/lineup", title: "Lineup optimizer" },
 ];
 
 function pageFromHash(): Page {
@@ -307,6 +308,7 @@ function App() {
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [page, setPage] = useState<Page>(pageFromHash);
+  const session = useSession();
 
   // Hash routing (#/lineup) so pages work on GitHub Pages without server rewrites.
   useEffect(() => {
@@ -501,19 +503,28 @@ function App() {
 
   return (
     <main className="page">
-      <nav className="page-tabs" aria-label="Pages">
-        {pageTabs.map((tab) => (
-          <a
-            key={tab.page}
-            href={tab.href}
-            className={page === tab.page ? "page-tab active" : "page-tab"}
-            aria-current={page === tab.page ? "page" : undefined}
-          >
-            <span className="page-tab-title">{tab.title}</span>
-            <span className="page-tab-description">{tab.description}</span>
-          </a>
-        ))}
-      </nav>
+      <div className="top-bar">
+        <nav className="page-tabs" aria-label="Pages">
+          {pageTabs.map((tab) => (
+            <a
+              key={tab.page}
+              href={tab.href}
+              className={page === tab.page ? "page-tab active" : "page-tab"}
+              aria-current={page === tab.page ? "page" : undefined}
+            >
+              {tab.title}
+            </a>
+          ))}
+        </nav>
+        {session && (
+          <div className="account">
+            <span className="account-email">{session.user.email}</span>
+            <button type="button" className="row-action" onClick={() => signOut()}>
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
 
       {page === "lineup" ? (
         <LineupOptimizer

@@ -81,22 +81,11 @@ input:focus-visible {
   background: #f7f8f8;
 }
 
-.auth-bar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  width: min(100% - 40px, 920px);
-  margin: 0 auto;
-  padding-top: 14px;
-  color: #69716c;
-  font-size: 12px;
-}
 
 .page {
   width: min(100% - 40px, 920px);
   margin: 0 auto;
-  padding: 48px 0 28px;
+  padding: 20px 0 28px;
 }
 
 .eyebrow {
@@ -339,6 +328,9 @@ h1 {
 }
 
 .table-scroll {
+  /* Contains absolutely positioned descendants (e.g. .visually-hidden headings) so they
+     can't stretch the page wider than the screen. */
+  position: relative;
   overflow-x: auto;
   container-type: inline-size;
 }
@@ -1081,37 +1073,44 @@ tbody .lines-row:hover {
   white-space: nowrap;
 }
 
-/* Page switcher: two large tabs at the very top, doubling as the page header. */
+/* Top bar: page tabs on the left, signed-in account on the right, on one line. */
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 22px;
+}
+
 .page-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #e0e4e1;
+  border-radius: 7px;
+  background: #fff;
 }
 
 .page-tab {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 20px 22px;
-  border: 1px solid #e0e4e1;
-  border-radius: 8px;
-  background: #fafbfa;
-  color: #69716c;
+  padding: 6px 12px;
+  border-radius: 5px;
+  color: #555e59;
+  font-size: 13px;
+  font-weight: 500;
   text-decoration: none;
-  transition: background-color 0.15s, border-color 0.15s;
+  white-space: nowrap;
 }
 
 .page-tab:hover {
-  border-color: #cfd8d2;
-  background: #fff;
+  background: #f1f4f2;
+  color: #263a2d;
 }
 
 .page-tab.active {
-  border-color: #2f5a3d;
-  background: #fff;
-  box-shadow: inset 0 -3px 0 #2f5a3d;
+  background: #2f5a3d;
+  color: #fff;
+  font-weight: 600;
 }
 
 .page-tab:focus-visible {
@@ -1119,29 +1118,19 @@ tbody .lines-row:hover {
   outline-offset: 2px;
 }
 
-.page-tab-title {
-  color: #3a443d;
-  font-size: clamp(18px, 3.2vw, 24px);
-  font-weight: 600;
-  letter-spacing: -0.02em;
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #69716c;
+  font-size: 12px;
 }
 
-.page-tab.active .page-tab-title {
-  color: #1f3527;
-}
-
-.page-tab-description {
-  font-size: 13px;
-}
-
-@media (max-width: 480px) {
-  .page-tab {
-    padding: 14px;
-  }
-
-  .page-tab-description {
-    font-size: 12px;
-  }
+.account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lineup-body {
@@ -1255,10 +1244,15 @@ tbody .lines-row:hover {
   background: #f1f4f2;
 }
 
+/* Player cell: name over team/opponent, never squeezed narrower than the name. */
 .lineup-table td:nth-child(2) {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+  min-width: 150px;
+}
+
+.lineup-table .lineup-name,
+.lineup-table .lineup-meta {
+  display: block;
+  white-space: nowrap;
 }
 
 .lineup-name {
@@ -1291,12 +1285,25 @@ tbody .lines-row:hover {
 
 .lineup-table td {
   height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
   white-space: normal;
 }
 
-.lineup-table td:nth-child(2) {
-  justify-content: center;
-  height: 44px;
+/* Breakdown chips can make rows wider than a phone; scroll the table, not the page. */
+.lineup-table-scroll {
+  position: relative;
+  overflow-x: auto;
+  border: 1px solid #e3e8e4;
+  border-radius: 5px;
+}
+
+.lineup-table-scroll .lineup-table {
+  border: 0;
+}
+
+.lineup-table .breakdown {
+  min-width: 220px;
 }
 
 .lineup-slot {
@@ -1347,7 +1354,7 @@ footer {
 @media (max-width: 560px) {
   .page {
     width: min(100% - 24px, 920px);
-    padding-top: 30px;
+    padding-top: 16px;
   }
 
   .list-heading {

@@ -10,7 +10,7 @@ import {
 } from "./lineup";
 import { readStorageJson, writeStorageJson } from "./storage";
 
-type ProjectedPlayer = Player & { points: number };
+type ProjectedPlayer = Player & { points: number; breakdown: { label: string; points: number }[] };
 type SavedRosterPlayer = Pick<Player, "id" | "name" | "position" | "team">;
 
 const rosterStorageKey = "fantasy-my-team";
@@ -50,6 +50,10 @@ function readFormat(): LineupFormat {
       ];
     }),
   ) as LineupFormat;
+}
+
+function formatPoints(points: number) {
+  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)}`;
 }
 
 function presetName(format: LineupFormat) {
@@ -99,6 +103,7 @@ export function LineupOptimizer({
     return {
       ...saved,
       points: projected?.points ?? 0,
+      breakdown: projected?.breakdown ?? [],
       opponent: projected?.opponent ?? null,
       hasProjection: projected !== undefined,
     };
@@ -139,6 +144,20 @@ export function LineupOptimizer({
         <td>{player ? renderPlayerCell(player) : <span className="lineup-empty">{emptyLabel}</span>}</td>
         <td className="points">
           {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">No proj</span>}
+        </td>
+        <td className="breakdown">
+          {player && player.breakdown.length > 0 && (
+            <ul className="breakdown-list">
+              {player.breakdown.map((item) => (
+                <li key={item.label}>
+                  <span>{item.label}</span>
+                  <span className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}>
+                    {formatPoints(item.points)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </td>
         <td className="action">
           {player && (
@@ -294,33 +313,38 @@ export function LineupOptimizer({
           <p className="lineup-note">Your team is empty. Search above to add your players; they're saved in this browser.</p>
         )}
 
-        <table className="lineup-table">
-          <thead>
-            <tr>
-              <th scope="col">Slot</th>
-              <th scope="col">Player</th>
-              <th scope="col" className="points-heading">Proj</th>
-              <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {lineup.starters.map(({ slot, player }, index) =>
-              renderRow(
-                slot === "SUPERFLEX" ? "SFLEX" : slot,
-                player,
-                `Empty — add a ${slotLabels[slot].replace(/ \(.*/, "")} eligible player`,
-                `${slot}-${index}`,
-              ),
-            )}
-          </tbody>
-        </table>
+        <div className="lineup-table-scroll">
+          <table className="lineup-table">
+            <thead>
+              <tr>
+                <th scope="col">Slot</th>
+                <th scope="col">Player</th>
+                <th scope="col" className="points-heading">Proj</th>
+                <th scope="col">Breakdown</th>
+                <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {lineup.starters.map(({ slot, player }, index) =>
+                renderRow(
+                  slot === "SUPERFLEX" ? "SFLEX" : slot,
+                  player,
+                  `Empty — add a ${slotLabels[slot].replace(/ \(.*/, "")} eligible player`,
+                  `${slot}-${index}`,
+                ),
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {lineup.bench.length > 0 && (
           <>
             <h3 className="bench-heading">Bench</h3>
-            <table className="lineup-table bench">
-              <tbody>{lineup.bench.map((player) => renderRow("BN", player, "", player.id))}</tbody>
-            </table>
+            <div className="lineup-table-scroll">
+              <table className="lineup-table bench">
+                <tbody>{lineup.bench.map((player) => renderRow("BN", player, "", player.id))}</tbody>
+              </table>
+            </div>
           </>
         )}
         {rosterWithPoints.some((player) => !player.hasProjection) && (
