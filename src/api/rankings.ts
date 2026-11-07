@@ -151,8 +151,15 @@ function parseWeek(value: unknown, games: unknown): ProjectionWeek | null {
   return { start, end, games: typeof games === "number" ? games : 0 };
 }
 
-export async function getPlayerProjections(signal?: AbortSignal): Promise<PlayerProjections> {
-  const response = await fetchAsUser(functionUrl("project-players"), signal);
+/** Projections for the NFL week [from, to); the API takes both as ISO 8601 timestamps. */
+export async function getPlayerProjections(
+  week: { from: Date; to: Date },
+  signal?: AbortSignal,
+): Promise<PlayerProjections> {
+  const url = functionUrl("project-players");
+  url.searchParams.set("from", week.from.toISOString());
+  url.searchParams.set("to", week.to.toISOString());
+  const response = await fetchAsUser(url, signal);
   if (!response.ok) {
     throw new Error(`Could not load player projections (server returned ${response.status}).`);
   }

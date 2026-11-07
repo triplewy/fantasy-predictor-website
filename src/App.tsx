@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { signOut, useSession } from "./AuthGate";
 import { LineupOptimizer } from "./LineupOptimizer";
+import { currentNflWeek } from "./nflWeek";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
@@ -339,7 +340,7 @@ function App() {
   useEffect(() => {
     const controller = new AbortController();
 
-    getPlayerProjections(controller.signal)
+    getPlayerProjections(currentNflWeek(), controller.signal)
       .then(({ players: loadedPlayers, week, updatedAt }) => {
         setPlayers(loadedPlayers);
         setProjectionWeek(week);
