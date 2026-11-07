@@ -1091,6 +1091,276 @@ tbody .lines-row:hover {
   white-space: nowrap;
 }
 
+.page-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.page-tab {
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #555e59;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.page-tab:hover {
+  background: #edf1ee;
+}
+
+.page-tab.active {
+  border-color: #d7ded9;
+  background: #fff;
+  color: #263a2d;
+  font-weight: 600;
+}
+
+.page-tab:focus-visible {
+  outline: 2px solid #546d5d;
+  outline-offset: 2px;
+}
+
+.lineup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 16px;
+  padding: 0 22px 22px;
+}
+
+.lineup-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e3e8e4;
+  border-radius: 6px;
+}
+
+.lineup-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.lineup-panel h3 {
+  margin: 0;
+  color: #28312b;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.lineup-panel select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid #dfe4e0;
+  border-radius: 5px;
+  background: #fff;
+  color: #303a33;
+  font: inherit;
+  font-size: 13px;
+}
+
+.roster-heading {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #edf0ed;
+}
+
+.slot-counts {
+  display: grid;
+  gap: 6px;
+}
+
+.slot-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #535c56;
+  font-size: 13px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #dfe4e0;
+  border-radius: 5px;
+}
+
+.stepper button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  background: none;
+  color: #3a443d;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.stepper button:hover:not(:disabled) {
+  background: #f1f4f2;
+}
+
+.stepper button:disabled {
+  color: #c2c8c4;
+  cursor: not-allowed;
+}
+
+.stepper output {
+  min-width: 24px;
+  color: #28312b;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.lineup-note {
+  margin: 8px 0 0;
+  color: #7a827d;
+  font-size: 12px;
+}
+
+.roster-search {
+  position: relative;
+}
+
+.roster-search input {
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #dfe4e0;
+  border-radius: 5px;
+  color: #242a27;
+  font-size: 13px;
+}
+
+.roster-suggestions {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  left: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  border: 1px solid #dfe4e0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgb(36 42 39 / 12%);
+  list-style: none;
+}
+
+.roster-suggestions button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roster-suggestions button:hover,
+.roster-suggestions button:focus-visible {
+  background: #f1f4f2;
+}
+
+.roster-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  border-bottom: 1px solid #edf0ed;
+}
+
+.roster-list li:last-child {
+  border-bottom: 0;
+}
+
+.roster-player,
+.lineup-table td:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lineup-name {
+  color: #28312b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lineup-meta {
+  color: #7a827d;
+  font-size: 11px;
+}
+
+.lineup-total {
+  color: #2f5a3d;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.lineup-table {
+  border: 1px solid #e3e8e4;
+  border-radius: 5px;
+}
+
+.lineup-table th,
+.lineup-table td {
+  padding: 0 12px;
+}
+
+.lineup-table td {
+  height: 44px;
+  white-space: normal;
+}
+
+.lineup-table td:nth-child(2) {
+  justify-content: center;
+  height: 44px;
+}
+
+.lineup-slot {
+  width: 64px;
+  color: #656e68;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.lineup-empty {
+  color: #9aa19c;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.bench-heading {
+  margin: 18px 0 8px !important;
+}
+
+.lineup-table.bench td {
+  color: #69716c;
+}
+
+@media (max-width: 760px) {
+  .lineup-grid {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 15px 15px;
+  }
+}
+
 .empty-state {
   margin: 0;
   padding: 28px 20px;

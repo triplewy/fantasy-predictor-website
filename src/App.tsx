@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
+import { LineupOptimizer } from "./LineupOptimizer";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
+import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
   getPlayerProjections,
   type Player,
@@ -197,32 +199,6 @@ const legacyExcludedNamesStorageKey = "fantasy-omitted-players";
  */
 type ExcludedPlayer = Pick<Player, "id" | "name" | "position" | "team">;
 
-function readStorageJson(key: string): unknown {
-  try {
-    const value = localStorage.getItem(key);
-    return value === null ? null : JSON.parse(value);
-  } catch (error) {
-    console.warn(`Could not read saved "${key}".`, error);
-    return null;
-  }
-}
-
-function writeStorageJson(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch (error) {
-    console.warn(`Could not save "${key}".`, error);
-  }
-}
-
-function removeStorageItem(key: string) {
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    // Ignore: a leftover entry is harmless.
-  }
-}
-
 function readCookie(name: string): string | null {
   const cookie = document.cookie.split("; ").find((item) => item.startsWith(`${name}=`));
   return cookie ? decodeURIComponent(cookie.slice(name.length + 1)) : null;
@@ -299,6 +275,12 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
   return { format: "PPR", settings: { ...scoringPresets.PPR } };
 }
 
+type Page = "rankings" | "lineup";
+
+function pageFromHash(): Page {
+  return window.location.hash === "#/lineup" ? "lineup" : "rankings";
+}
+
 function App() {
   const [position, setPosition] = useState<PositionFilter>("ALL");
   const [search, setSearch] = useState("");
@@ -319,6 +301,14 @@ function App() {
   const [isExcludedMenuOpen, setIsExcludedMenuOpen] = useState(false);
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
+  const [page, setPage] = useState<Page>(pageFromHash);
+
+  // Hash routing (#/lineup) so pages work on GitHub Pages without server rewrites.
+  useEffect(() => {
+    const onHashChange = () => setPage(pageFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   function toggleExpanded(id: string) {
     setExpandedPlayerId((current) => (current === id ? null : id));
@@ -398,18 +388,22 @@ function App() {
     [excludedPlayers],
   );
 
-  // Sorted by projected points; ranks are assigned per position tab below.
-  const scoredPlayers = useMemo(
+  // Every player's points under the current scoring, sorted. The lineup optimizer uses all
+  // of them; rankings leave out excluded players and assign ranks per position tab below.
+  const allScoredPlayers = useMemo(
     () =>
       players
-        .filter((player) => !excludedSet.has(player.id))
         .map((player) => {
           const breakdown = getPointsBreakdown(player.stats, player.position, settings);
           const points = breakdown.reduce((total, item) => total + item.points, 0);
           return { ...player, breakdown, points };
         })
         .sort((a, b) => b.points - a.points),
-    [players, settings, excludedSet],
+    [players, settings],
+  );
+  const scoredPlayers = useMemo(
+    () => allScoredPlayers.filter((player) => !excludedSet.has(player.id)),
+    [allScoredPlayers, excludedSet],
   );
 
   const visibleExcludedPlayers = excludedPlayers.filter(
@@ -432,302 +426,325 @@ function App() {
       );
   }, [scoredPlayers, position, search]);
 
+  const scoringControl = (
+    <div className="scoring-dropdown">
+      <button
+        type="button"
+        className="scoring-trigger"
+        aria-expanded={isScoringMenuOpen}
+        aria-controls="scoring-settings"
+        onClick={() => setIsScoringMenuOpen((open) => !open)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setIsScoringMenuOpen(false);
+        }}
+      >
+        <span>Points settings</span>
+        <span className="current-format">{scoringFormat}</span>
+        <span className="dropdown-chevron" aria-hidden="true">{isScoringMenuOpen ? "⌃" : "⌄"}</span>
+      </button>
+      {isScoringMenuOpen && (
+        <div
+          className="scoring-menu"
+          id="scoring-settings"
+          role="region"
+          aria-label="Scoring settings"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setIsScoringMenuOpen(false);
+          }}
+        >
+          <div className="settings-menu-header">
+            <div>
+              <p className="menu-title">Scoring format</p>
+              <p className="menu-description">Choose a preset or edit any value below.</p>
+            </div>
+            <div className="scoring-formats" aria-label="Scoring format">
+              {(["PPR", "Half PPR", "Standard"] as const).map((format) => (
+                <button
+                  type="button"
+                  key={format}
+                  className={scoringFormat === format ? "format-option selected" : "format-option"}
+                  aria-pressed={scoringFormat === format}
+                  onClick={() => selectScoringFormat(format)}
+                >
+                  {format}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="settings-grid">
+            {scoringSettingFields.map(({ key, label, unit, step }) => (
+              <label className="setting-field" key={key}>
+                <span>{label}</span>
+                <span className="setting-input-wrap">
+                  <input
+                    type="number"
+                    step={step ?? 0.5}
+                    value={settings[key]}
+                    aria-label={label}
+                    onChange={(event) => updateScoringSetting(key, event.currentTarget.value)}
+                  />
+                  <span>{unit}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="settings-note">Custom scoring settings are saved for this page. Projected points are calculated from these settings. Kicker projections arrive pre-scored, so field goal and fumble values don't change them.</p>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <main className="page">
       <header className="page-header">
         <p className="eyebrow">FANTASY FOOTBALL</p>
         <h1>Player projections</h1>
         <p className="subtitle">Weekly point projections for fantasy football players.</p>
+        <nav className="page-tabs" aria-label="Pages">
+          <a href="#/" className={page === "rankings" ? "page-tab active" : "page-tab"} aria-current={page === "rankings" ? "page" : undefined}>
+            Rankings
+          </a>
+          <a href="#/lineup" className={page === "lineup" ? "page-tab active" : "page-tab"} aria-current={page === "lineup" ? "page" : undefined}>
+            Lineup optimizer
+          </a>
+        </nav>
       </header>
 
-      <section className="player-list" aria-label="Player rankings">
-        <div className="list-heading">
-          <div>
-            <h2>All players</h2>
-            <p>{projectionWeek ? formatWeek(projectionWeek) : "Weekly point projections"}</p>
-          </div>
-          <label className="search">
-            <span>Search</span>
-            <input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Player or team"
-              aria-label="Search by player or team"
-            />
-          </label>
-        </div>
+      {page === "lineup" ? (
+        <LineupOptimizer
+          players={allScoredPlayers}
+          isLoading={isLoadingPlayers}
+          error={playersError}
+          scoringControl={scoringControl}
+          weekLabel={projectionWeek ? formatWeek(projectionWeek) : "this week"}
+        />
+      ) : (
 
-        <div className="scoring-dropdown">
-          <button
-            type="button"
-            className="scoring-trigger"
-            aria-expanded={isScoringMenuOpen}
-            aria-controls="scoring-settings"
-            onClick={() => setIsScoringMenuOpen((open) => !open)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setIsScoringMenuOpen(false);
-            }}
-          >
-            <span>Points settings</span>
-            <span className="current-format">{scoringFormat}</span>
-            <span className="dropdown-chevron" aria-hidden="true">{isScoringMenuOpen ? "⌃" : "⌄"}</span>
-          </button>
-          {isScoringMenuOpen && (
-            <div
-              className="scoring-menu"
-              id="scoring-settings"
-              role="region"
-              aria-label="Scoring settings"
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setIsScoringMenuOpen(false);
-              }}
-            >
-              <div className="settings-menu-header">
-                <div>
-                  <p className="menu-title">Scoring format</p>
-                  <p className="menu-description">Choose a preset or edit any value below.</p>
-                </div>
-                <div className="scoring-formats" aria-label="Scoring format">
-                  {(["PPR", "Half PPR", "Standard"] as const).map((format) => (
-                    <button
-                      type="button"
-                      key={format}
-                      className={scoringFormat === format ? "format-option selected" : "format-option"}
-                      aria-pressed={scoringFormat === format}
-                      onClick={() => selectScoringFormat(format)}
-                    >
-                      {format}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="settings-grid">
-                {scoringSettingFields.map(({ key, label, unit, step }) => (
-                  <label className="setting-field" key={key}>
-                    <span>{label}</span>
-                    <span className="setting-input-wrap">
-                      <input
-                        type="number"
-                        step={step ?? 0.5}
-                        value={settings[key]}
-                        aria-label={label}
-                        onChange={(event) => updateScoringSetting(key, event.currentTarget.value)}
-                      />
-                      <span>{unit}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <p className="settings-note">Custom scoring settings are saved for this page. Projected points are calculated from these settings. Kicker projections arrive pre-scored, so field goal and fumble values don't change them.</p>
+        <section className="player-list" aria-label="Player rankings">
+          <div className="list-heading">
+            <div>
+              <h2>All players</h2>
+              <p>{projectionWeek ? formatWeek(projectionWeek) : "Weekly point projections"}</p>
             </div>
-          )}
-        </div>
+            <label className="search">
+              <span>Search</span>
+              <input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Player or team"
+                aria-label="Search by player or team"
+              />
+            </label>
+          </div>
 
-        <div className="scoring-dropdown excluded-dropdown">
-          <button
-            type="button"
-            className="scoring-trigger"
-            aria-expanded={isExcludedMenuOpen}
-            aria-controls="excluded-players"
-            onClick={() => setIsExcludedMenuOpen((open) => !open)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") setIsExcludedMenuOpen(false);
-            }}
-          >
-            <span>Excluded players</span>
-            <span className="current-format">{excludedPlayers.length}</span>
-            <span className="dropdown-chevron" aria-hidden="true">{isExcludedMenuOpen ? "⌃" : "⌄"}</span>
-          </button>
-          {isExcludedMenuOpen && (
-            <div
-              className="scoring-menu"
-              id="excluded-players"
-              role="region"
-              aria-label="Excluded players"
+          {scoringControl}
+
+          <div className="scoring-dropdown excluded-dropdown">
+            <button
+              type="button"
+              className="scoring-trigger"
+              aria-expanded={isExcludedMenuOpen}
+              aria-controls="excluded-players"
+              onClick={() => setIsExcludedMenuOpen((open) => !open)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") setIsExcludedMenuOpen(false);
               }}
             >
-              <div className="settings-menu-header">
-                <div>
-                  <p className="menu-title">Excluded players</p>
-                  <p className="menu-description">Excluded players are hidden from the rankings, and everyone else is re-ranked.</p>
+              <span>Excluded players</span>
+              <span className="current-format">{excludedPlayers.length}</span>
+              <span className="dropdown-chevron" aria-hidden="true">{isExcludedMenuOpen ? "⌃" : "⌄"}</span>
+            </button>
+            {isExcludedMenuOpen && (
+              <div
+                className="scoring-menu"
+                id="excluded-players"
+                role="region"
+                aria-label="Excluded players"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setIsExcludedMenuOpen(false);
+                }}
+              >
+                <div className="settings-menu-header">
+                  <div>
+                    <p className="menu-title">Excluded players</p>
+                    <p className="menu-description">Excluded players are hidden from the rankings, and everyone else is re-ranked.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="format-option"
+                    disabled={excludedPlayers.length === 0}
+                    onClick={() => setExcludedPlayers([])}
+                  >
+                    Restore all
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="format-option"
-                  disabled={excludedPlayers.length === 0}
-                  onClick={() => setExcludedPlayers([])}
-                >
-                  Restore all
-                </button>
-              </div>
-              <div className="excluded-tabs" role="group" aria-label="Filter excluded players by position">
-                {excludedPositions.map((item) => {
-                  const count =
-                    item === "ALL"
-                      ? excludedPlayers.length
-                      : excludedPlayers.filter((player) => player.position === item).length;
-                  return (
-                    <button
-                      type="button"
-                      key={item}
-                      className={excludedPosition === item ? "filter active" : "filter"}
-                      aria-pressed={excludedPosition === item}
-                      onClick={() => setExcludedPosition(item)}
-                    >
-                      {item === "ALL" ? "All" : item}
-                      <span className="tab-count">{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {visibleExcludedPlayers.length === 0 ? (
-                <p className="excluded-empty">
-                  {excludedPlayers.length === 0
-                    ? "No players excluded. Use the Exclude button on a player row."
-                    : `No ${excludedPosition} players excluded.`}
-                </p>
-              ) : (
-                <ul className="excluded-list">
-                  {visibleExcludedPlayers.map((player) => (
-                    <li key={player.id}>
-                      <span className="excluded-name">{player.name}</span>
-                      <span className="excluded-meta">{player.position} · {player.team}</span>
+                <div className="excluded-tabs" role="group" aria-label="Filter excluded players by position">
+                  {excludedPositions.map((item) => {
+                    const count =
+                      item === "ALL"
+                        ? excludedPlayers.length
+                        : excludedPlayers.filter((player) => player.position === item).length;
+                    return (
                       <button
                         type="button"
-                        className="row-action"
-                        aria-label={`Restore ${player.name}`}
-                        onClick={() => restorePlayer(player.id)}
+                        key={item}
+                        className={excludedPosition === item ? "filter active" : "filter"}
+                        aria-pressed={excludedPosition === item}
+                        onClick={() => setExcludedPosition(item)}
                       >
-                        Restore
+                        {item === "ALL" ? "All" : item}
+                        <span className="tab-count">{count}</span>
                       </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="list-controls">
-          <div className="position-filters" aria-label="Filter by position">
-            {positions.map((item) => (
-              <button
-                type="button"
-                key={item}
-                className={position === item ? "filter active" : "filter"}
-                aria-pressed={position === item}
-                onClick={() => setPosition(item)}
-              >
-                {item === "ALL" ? "All" : item}
-              </button>
-            ))}
-            <span className="player-count">
-              {isLoadingPlayers ? "Loading players..." : `${filteredPlayers.length} players`}
-            </span>
-          </div>
-        </div>
-
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Rank</th>
-                <th scope="col">Player</th>
-                <th scope="col">Pos</th>
-                <th scope="col">Team</th>
-                <th scope="col">Opponent</th>
-                <th scope="col" className="points-heading">Projected points</th>
-                <th scope="col">Breakdown</th>
-                <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPlayers.map((player) => {
-                const isExpanded = expandedPlayerId === player.id;
-                return (
-                  <Fragment key={player.id}>
-                    <tr
-                      className={isExpanded ? "player-row expanded" : "player-row"}
-                      onClick={() => toggleExpanded(player.id)}
-                    >
-                      <td className="rank">{player.rank}</td>
-                      <td className="name">
-                        <button
-                          type="button"
-                          className="row-toggle"
-                          aria-expanded={isExpanded}
-                          aria-controls={`lines-${player.id}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toggleExpanded(player.id);
-                          }}
-                        >
-                          <span className="row-chevron" aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
-                          {player.name}
-                        </button>
-                      </td>
-                      <td>{player.position}</td>
-                      <td>{player.team}</td>
-                      <td>{player.opponent}</td>
-                      <td className="points">{player.points.toFixed(1)}</td>
-                      <td className="breakdown">
-                        {player.breakdown.length === 0 ? (
-                          <span className="breakdown-empty">No projected stats</span>
-                        ) : (
-                          <ul className="breakdown-list">
-                            {player.breakdown.map((item) => (
-                              <li key={item.label}>
-                                <span>{item.label}</span>
-                                <span
-                                  className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}
-                                >
-                                  {formatPoints(item.points)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
-                      <td className="action">
+                    );
+                  })}
+                </div>
+                {visibleExcludedPlayers.length === 0 ? (
+                  <p className="excluded-empty">
+                    {excludedPlayers.length === 0
+                      ? "No players excluded. Use the Exclude button on a player row."
+                      : `No ${excludedPosition} players excluded.`}
+                  </p>
+                ) : (
+                  <ul className="excluded-list">
+                    {visibleExcludedPlayers.map((player) => (
+                      <li key={player.id}>
+                        <span className="excluded-name">{player.name}</span>
+                        <span className="excluded-meta">{player.position} · {player.team}</span>
                         <button
                           type="button"
                           className="row-action"
-                          aria-label={`Exclude ${player.name}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            excludePlayer(player);
-                          }}
+                          aria-label={`Restore ${player.name}`}
+                          onClick={() => restorePlayer(player.id)}
                         >
-                          Exclude
+                          Restore
                         </button>
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr className="lines-row" id={`lines-${player.id}`}>
-                        <td colSpan={8}>
-                          <PlayerLinesPanel player={player} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="list-controls">
+            <div className="position-filters" aria-label="Filter by position">
+              {positions.map((item) => (
+                <button
+                  type="button"
+                  key={item}
+                  className={position === item ? "filter active" : "filter"}
+                  aria-pressed={position === item}
+                  onClick={() => setPosition(item)}
+                >
+                  {item === "ALL" ? "All" : item}
+                </button>
+              ))}
+              <span className="player-count">
+                {isLoadingPlayers ? "Loading players..." : `${filteredPlayers.length} players`}
+              </span>
+            </div>
+          </div>
+
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Rank</th>
+                  <th scope="col">Player</th>
+                  <th scope="col">Pos</th>
+                  <th scope="col">Team</th>
+                  <th scope="col">Opponent</th>
+                  <th scope="col" className="points-heading">Projected points</th>
+                  <th scope="col">Breakdown</th>
+                  <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPlayers.map((player) => {
+                  const isExpanded = expandedPlayerId === player.id;
+                  return (
+                    <Fragment key={player.id}>
+                      <tr
+                        className={isExpanded ? "player-row expanded" : "player-row"}
+                        onClick={() => toggleExpanded(player.id)}
+                      >
+                        <td className="rank">{player.rank}</td>
+                        <td className="name">
+                          <button
+                            type="button"
+                            className="row-toggle"
+                            aria-expanded={isExpanded}
+                            aria-controls={`lines-${player.id}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleExpanded(player.id);
+                            }}
+                          >
+                            <span className="row-chevron" aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
+                            {player.name}
+                          </button>
+                        </td>
+                        <td>{player.position}</td>
+                        <td>{player.team}</td>
+                        <td>{player.opponent}</td>
+                        <td className="points">{player.points.toFixed(1)}</td>
+                        <td className="breakdown">
+                          {player.breakdown.length === 0 ? (
+                            <span className="breakdown-empty">No projected stats</span>
+                          ) : (
+                            <ul className="breakdown-list">
+                              {player.breakdown.map((item) => (
+                                <li key={item.label}>
+                                  <span>{item.label}</span>
+                                  <span
+                                    className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}
+                                  >
+                                    {formatPoints(item.points)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                        <td className="action">
+                          <button
+                            type="button"
+                            className="row-action"
+                            aria-label={`Exclude ${player.name}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              excludePlayer(player);
+                            }}
+                          >
+                            Exclude
+                          </button>
                         </td>
                       </tr>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-          {isLoadingPlayers && (
-            <p className="empty-state" role="status">Loading player projections...</p>
-          )}
-          {playersError && (
-            <p className="empty-state error-state" role="alert">{playersError}</p>
-          )}
-          {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && (
-            <p className="empty-state">No players match your search.</p>
-          )}
-        </div>
-      </section>
+                      {isExpanded && (
+                        <tr className="lines-row" id={`lines-${player.id}`}>
+                          <td colSpan={8}>
+                            <PlayerLinesPanel player={player} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            {isLoadingPlayers && (
+              <p className="empty-state" role="status">Loading player projections...</p>
+            )}
+            {playersError && (
+              <p className="empty-state error-state" role="alert">{playersError}</p>
+            )}
+            {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && (
+              <p className="empty-state">No players match your search.</p>
+            )}
+          </div>
+        </section>
+      )}
       <footer>Projected stats are provided by the server; points and ranks are calculated from your scoring settings.</footer>
     </main>
   );
