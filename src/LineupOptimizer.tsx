@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { getAllPlayers, type ListedPlayer } from "./api/players";
 import type { Player, Position } from "./api/rankings";
 import {
   lineupPresets,
@@ -16,6 +17,17 @@ type SavedRosterPlayer = Pick<Player, "id" | "name" | "position" | "team">;
 const rosterStorageKey = "fantasy-my-team";
 const formatStorageKey = "fantasy-lineup-format";
 const positions: Position[] = ["QB", "RB", "WR", "TE", "K"];
+
+// The full player list is large and rarely changes, so it's fetched once per page load and
+// shared across visits to this tab.
+let playerListRequest: Promise<ListedPlayer[]> | null = null;
+function loadPlayerList() {
+  playerListRequest ??= getAllPlayers().catch((error: unknown) => {
+    playerListRequest = null; // allow a retry on the next visit
+    throw error;
+  });
+  return playerListRequest;
+}
 const maxSlotsPerType = 4;
 
 function isSavedRosterPlayer(value: unknown): value is SavedRosterPlayer {
@@ -81,6 +93,21 @@ export function LineupOptimizer({
   const [format, setFormat] = useState<LineupFormat>(readFormat);
   const [query, setQuery] = useState("");
   const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false);
+  const [playerList, setPlayerList] = useState<ListedPlayer[] | null>(null);
+  const [playerListError, setPlayerListError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    loadPlayerList()
+      .then((list) => isCurrent && setPlayerList(list))
+      .catch((caught: unknown) => {
+        if (isCurrent) setPlayerListError(caught instanceof Error ? caught.message : "Could not load the player list.");
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+  const isPlayerListLoading = playerList === null && playerListError === null;
 
   useEffect(() => writeStorageJson(rosterStorageKey, roster), [roster]);
   useEffect(() => writeStorageJson(formatStorageKey, format), [format]);
@@ -88,20 +115,26 @@ export function LineupOptimizer({
   const playersById = useMemo(() => new Map(players.map((player) => [player.id, player])), [players]);
   const rosterIds = useMemo(() => new Set(roster.map((player) => player.id)), [roster]);
 
+  // Search the full player list; players projected this week sort first (by points),
+  // then everyone else alphabetically.
   const suggestions = useMemo(() => {
     const text = query.trim().toLowerCase();
-    if (!text) return [];
-    return players
+    if (!text || !playerList) return [];
+    return playerList
       .filter((player) => !rosterIds.has(player.id))
       .filter((player) => `${player.name} ${player.team}`.toLowerCase().includes(text))
+      .map((player) => ({ ...player, projectedPoints: playersById.get(player.id)?.points ?? null }))
+      .sort((a, b) => (b.projectedPoints ?? -Infinity) - (a.projectedPoints ?? -Infinity) || a.name.localeCompare(b.name))
       .slice(0, 8);
-  }, [players, query, rosterIds]);
+  }, [playerList, playersById, query, rosterIds]);
 
   // Rostered players without a projection this week (bye, injury, not listed) score 0.
   const rosterWithPoints: RosterPlayer[] = roster.map((saved) => {
     const projected = playersById.get(saved.id);
     return {
       ...saved,
+      // Prefer this week's team (trades, signings) over the one saved when added.
+      team: projected?.team ?? saved.team,
       points: projected?.points ?? 0,
       breakdown: projected?.breakdown ?? [],
       opponent: projected?.opponent ?? null,
@@ -111,7 +144,7 @@ export function LineupOptimizer({
   const lineup = optimizeLineup(rosterWithPoints, format);
   const starterCount = slotTypes.reduce((total, slot) => total + format[slot], 0);
 
-  function addPlayer(player: ProjectedPlayer) {
+  function addPlayer(player: ListedPlayer) {
     const { id, name, position, team } = player;
     setRoster((current) => (current.some((item) => item.id === id) ? current : [...current, { id, name, position, team }]));
     setQuery("");
@@ -285,9 +318,9 @@ export function LineupOptimizer({
               if (event.key === "Enter" && suggestions[0]) addPlayer(suggestions[0]);
               if (event.key === "Escape") setQuery("");
             }}
-            placeholder={isLoading ? "Loading players..." : "Add a player to your team by name or team"}
+            placeholder={isPlayerListLoading ? "Loading players..." : "Add a player to your team by name or team"}
             aria-label="Search players to add to your team"
-            disabled={isLoading}
+            disabled={isPlayerListLoading || playerList === null}
           />
           {suggestions.length > 0 && (
             <ul className="roster-suggestions" aria-label="Matching players">
@@ -296,18 +329,21 @@ export function LineupOptimizer({
                   <button type="button" onClick={() => addPlayer(player)}>
                     <span className="lineup-name">{player.name}</span>
                     <span className="lineup-meta">
-                      {player.position} · {player.team} · {player.points.toFixed(1)} pts
+                      {player.position} · {player.team} ·{" "}
+                      {player.projectedPoints === null ? "no projection this week" : `${player.projectedPoints.toFixed(1)} pts`}
                     </span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          {query.trim() && suggestions.length === 0 && !isLoading && (
+          {playerListError && <p className="lineup-note error-state" role="alert">{playerListError}</p>}
+          {query.trim() && suggestions.length === 0 && playerList !== null && (
             <p className="lineup-note">No players match "{query.trim()}".</p>
           )}
         </div>
 
+        {isLoading && <p className="lineup-note" role="status">Loading this week's projections…</p>}
         {error && <p className="lineup-note error-state" role="alert">{error}</p>}
         {roster.length === 0 && (
           <p className="lineup-note">Your team is empty. Search above to add your players; they're saved in this browser.</p>
