@@ -1458,6 +1458,14 @@ tbody .lines-row:hover {
   color: #2f5a3d;
 }
 
+.lineup-updated {
+  width: 1%;
+  color: #7a827d;
+  font-size: 12px;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums;
+}
+
 .lineup-slot {
   width: 64px;
   color: #656e68;

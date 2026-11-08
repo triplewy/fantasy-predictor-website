@@ -231,6 +231,7 @@ export function LineupOptimizer({
         breakdown: [],
         stats: null,
         gameId: projection.status === "no-lines" ? projection.gameId : null,
+        lastUpdatedAt: null,
         opponent: projection.status === "no-lines" ? projection.opponent : null,
         hasProjection: false,
         note: projectionNote(projection),
@@ -243,6 +244,7 @@ export function LineupOptimizer({
       breakdown,
       stats: projection.stats,
       gameId: projection.gameId,
+      lastUpdatedAt: projection.lastUpdatedAt,
       opponent: projection.opponent,
       hasProjection: true,
       note: null,
@@ -374,6 +376,15 @@ export function LineupOptimizer({
               <span className="lineup-tag start">Optimal starter</span>
             )}
           </td>
+          <td className="lineup-updated">
+            {player?.lastUpdatedAt ? (
+              <span title={`Latest line update: ${formatTimestamp(player.lastUpdatedAt)}`}>
+                {timeAgo(player.lastUpdatedAt, now)}
+              </span>
+            ) : player ? (
+              <span className="no-line">—</span>
+            ) : null}
+          </td>
           <td className="points">
             {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">{player.note}</span>}
           </td>
@@ -445,7 +456,7 @@ export function LineupOptimizer({
         </tr>
         {isExpanded && player.gameId && (
           <tr className="lines-row" id={`lineup-lines-${player.id}`}>
-            <td colSpan={5}>
+            <td colSpan={6}>
               <PlayerLinesPanel
                 // Remount after an automatic refetch so an open panel shows the new lines.
                 key={refreshCount}
@@ -654,6 +665,7 @@ export function LineupOptimizer({
               <tr>
                 <th scope="col">Slot</th>
                 <th scope="col">Player</th>
+                <th scope="col" title="When this player's lines were last updated">Updated</th>
                 <th scope="col" className="points-heading">Proj</th>
                 <th scope="col">Breakdown</th>
                 <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>

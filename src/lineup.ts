@@ -44,6 +44,8 @@ export type RosterPlayer = Pick<Player, "id" | "name" | "position" | "team"> & {
   stats: PlayerStats | null;
   /** This week's game, when the player has one (needed to load their lines). */
   gameId: string | null;
+  /** Newest last_updated_at across the player's lines, when they have lines. */
+  lastUpdatedAt: Date | null;
   opponent: string | null;
   hasProjection: boolean;
   /** Why there's no projection yet, e.g. "Loading lines…" or "Bye week". */
