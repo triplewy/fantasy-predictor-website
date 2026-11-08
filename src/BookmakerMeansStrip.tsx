@@ -21,6 +21,17 @@ function formatDiff(value: number, scale: number) {
   return `${value >= 0 ? "+" : "−"}${formatValue(Math.abs(value), scale)}`;
 }
 
+/**
+ * Sample standard deviation (n − 1) of the bookmakers' expected values: how far books
+ * typically sit from the average. Null with fewer than two bookmakers.
+ */
+function standardDeviation(values: number[]): number | null {
+  if (values.length < 2) return null;
+  const mean = values.reduce((total, value) => total + value, 0) / values.length;
+  const variance = values.reduce((total, value) => total + (value - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
 function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -64,6 +75,7 @@ export function BookmakerMeansStrip({
   const [hovered, setHovered] = useState<string | null>(null);
 
   const medianValue = median(means.map((item) => item.mean));
+  const spread = standardDeviation(means.map((item) => item.mean));
   const values = [...means.map((item) => item.mean), average, medianValue];
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -95,6 +107,10 @@ export function BookmakerMeansStrip({
       <p className="means-caption">
         Expected value by bookmaker · average of {means.length} = <strong>{formatValue(average)}</strong>
         {" "}· median = <strong>{formatValue(medianValue, average)}</strong>
+        {" "}·{" "}
+        <span title="Standard deviation of the bookmakers' expected values (sample, n − 1): how far books typically sit from the average.">
+          std dev = <strong>{spread === null ? "—" : `±${formatValue(spread, average)}`}</strong>
+        </span>
         {excluded.length > 0 && (
           <span className="means-excluded">
             {" "}
@@ -110,7 +126,9 @@ export function BookmakerMeansStrip({
           aria-label={`${label}: expected value by bookmaker. ${[...means]
             .sort((a, b) => a.mean - b.mean)
             .map((item) => `${item.bookmaker} ${formatValue(item.mean, average)}`)
-            .join(", ")}. Average ${formatValue(average)}, median ${formatValue(medianValue, average)}.`}
+            .join(", ")}. Average ${formatValue(average)}, median ${formatValue(medianValue, average)}${
+            spread === null ? "" : `, standard deviation ${formatValue(spread, average)}`
+          }.`}
         >
           <line className="prob-axis" x1={margin.left} x2={margin.left + plotWidth} y1={axisY} y2={axisY} />
           {ticks.map((tick) => (
