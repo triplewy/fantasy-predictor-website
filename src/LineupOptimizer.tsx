@@ -123,16 +123,12 @@ function useNow(intervalMs = 60_000) {
   return now;
 }
 
-/** "just now", "12m ago", "3h ago", "1d 21h ago", "2d ago". */
+/** "just now", "12m ago", "3h ago", "45h ago" (hours are the largest unit). */
 function timeAgo(date: Date, now: number) {
   const minutes = Math.max(0, Math.round((now - date.getTime()) / 60_000));
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  const remainingHours = hours % 24;
-  return remainingHours ? `${days}d ${remainingHours}h ago` : `${days}d ago`;
+  return `${Math.round(minutes / 60)}h ago`;
 }
 
 function formatTimestamp(date: Date) {
