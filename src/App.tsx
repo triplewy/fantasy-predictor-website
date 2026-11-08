@@ -3,6 +3,7 @@ import { signOut, useSession } from "./AuthGate";
 import { LineupOptimizer } from "./LineupOptimizer";
 import { currentNflWeek } from "./nflWeek";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
+import { currentPage, pageHref, type Page } from "./routes";
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
   getPointsBreakdown,
@@ -135,16 +136,10 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
   return { format: "PPR", settings: { ...scoringPresets.PPR } };
 }
 
-type Page = "rankings" | "lineup";
-
-const pageTabs: { page: Page; href: string; title: string }[] = [
-  { page: "rankings", href: "#/", title: "Rankings" },
-  { page: "lineup", href: "#/lineup", title: "Lineup optimizer" },
+const pageTabs: { page: Page; title: string }[] = [
+  { page: "rankings", title: "Rankings" },
+  { page: "lineup", title: "Lineup optimizer" },
 ];
-
-function pageFromHash(): Page {
-  return window.location.hash === "#/lineup" ? "lineup" : "rankings";
-}
 
 function App() {
   const [position, setPosition] = useState<PositionFilter>("ALL");
@@ -167,12 +162,12 @@ function App() {
   const [isExcludedMenuOpen, setIsExcludedMenuOpen] = useState(false);
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>(pageFromHash);
+  const [page, setPage] = useState<Page>(currentPage);
   const session = useSession();
 
-  // Hash routing (#/lineup) so pages work on GitHub Pages without server rewrites.
+  // Hash routing (see routes.ts): follow tab clicks, back/forward and redirects.
   useEffect(() => {
-    const onHashChange = () => setPage(pageFromHash());
+    const onHashChange = () => setPage(currentPage());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -373,7 +368,7 @@ function App() {
           {pageTabs.map((tab) => (
             <a
               key={tab.page}
-              href={tab.href}
+              href={pageHref(tab.page)}
               className={page === tab.page ? "page-tab active" : "page-tab"}
               aria-current={page === tab.page ? "page" : undefined}
             >

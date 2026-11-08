@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { rememberRouteForSignIn, restoreRouteAfterSignIn } from "./routes";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 export const SessionContext = createContext<Session | null>(null);
@@ -31,15 +32,21 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setSession(data.session);
       setIsLoading(false);
     });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      // Back from Google: Supabase has removed its tokens from the URL; return to the page
+      // the user signed in from.
+      if (event === "SIGNED_IN") restoreRouteAfterSignIn();
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
   async function signIn() {
     setError(null);
+    rememberRouteForSignIn();
     const { error: signInError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      // Return to this page (works on localhost and under the GitHub Pages base path).
+      // Back to the site root; the page itself is restored from rememberRouteForSignIn.
       options: { redirectTo: window.location.origin + import.meta.env.BASE_URL },
     });
     if (signInError) setError(signInError.message);
