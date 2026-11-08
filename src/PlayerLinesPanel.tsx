@@ -355,9 +355,9 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
       <div className="vig-summary" aria-label="Bookmaker margin (vig)">
         <span
           className="vig-title"
-          title="Overround of each bookmaker's two-sided (over + under) lines: 1/over + 1/under − 1. The median is what the projection uses to de-vig over-only lines."
+          title="Average overround of each bookmaker's two-sided (over + under) lines across all stats: 1/over + 1/under − 1. For reference only — projections remove vig curve by curve, using each curve's own lines and median margin."
         >
-          Vig · median margin
+          Vig · avg margin
         </span>
         {allBookmakers.map((bookmaker) => {
           const vig = vigByBookmaker.get(bookmaker);
@@ -366,13 +366,13 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
               key={bookmaker}
               className="vig-book"
               title={
-                vig?.median != null
-                  ? `${bookmaker}: median ${formatMargin(vig.median)} · average ${formatMargin(vig.average!)} over ${vig.twoSidedLines} two-sided line${vig.twoSidedLines === 1 ? "" : "s"}`
+                vig?.average != null
+                  ? `${bookmaker}: average ${formatMargin(vig.average)} · median ${formatMargin(vig.median!)} over ${vig.twoSidedLines} two-sided line${vig.twoSidedLines === 1 ? "" : "s"}`
                   : `${bookmaker}: no two-sided lines, so its prices are shown raw (as in the projection)`
               }
             >
               <span className="legend-dot" style={{ background: bookmakerColor(bookmaker) }} aria-hidden="true" />
-              {bookmaker} <strong>{vig?.median != null ? formatMargin(vig.median) : "—"}</strong>
+              {bookmaker} <strong>{vig?.average != null ? formatMargin(vig.average) : "—"}</strong>
             </span>
           );
         })}
