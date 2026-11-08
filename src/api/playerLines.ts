@@ -2,11 +2,13 @@ import { fetchAsUser, functionUrl } from "../supabase";
 
 export type PlayerLine = {
   bookmaker: string;
-  /** e.g. "player_rush_yds_alternate" or "player_anytime_td". */
+  /** e.g. "player_rush_yds_alternate", "player_rush_yds" (main O/U line) or "player_anytime_td". */
   market: string;
   lineValue: number;
   /** Decimal odds for the over at this line. */
   overDecimalOdds: number;
+  /** Decimal odds for the under, when the book prices both sides (main O/U lines). */
+  underDecimalOdds: number | null;
   lastUpdatedAt: Date;
 };
 
@@ -26,17 +28,27 @@ function parseDate(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+/** Numeric columns may arrive as numbers or numeric strings; anything else is null. */
+function toNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
 function parseLine(value: unknown): PlayerLine | undefined {
   if (!isRecord(value)) return undefined;
-  const { bookmaker, market, line_value, over_decimal_odds, last_updated_at } = value;
+  const { bookmaker, market, last_updated_at } = value;
+  const lineValue = toNumber(value.line_value);
+  const overDecimalOdds = toNumber(value.over_decimal_odds);
+  const underDecimalOdds = toNumber(value.under_decimal_odds);
   const lastUpdatedAt = parseDate(last_updated_at);
+  // Lines without an Over price contribute nothing to projections or charts.
   if (
     typeof bookmaker !== "string" ||
     typeof market !== "string" ||
-    typeof line_value !== "number" ||
-    !Number.isFinite(line_value) ||
-    typeof over_decimal_odds !== "number" ||
-    !(over_decimal_odds > 1) ||
+    lineValue === null ||
+    overDecimalOdds === null ||
+    !(overDecimalOdds > 1) ||
     !lastUpdatedAt
   ) {
     return undefined;
@@ -44,8 +56,9 @@ function parseLine(value: unknown): PlayerLine | undefined {
   return {
     bookmaker,
     market,
-    lineValue: line_value,
-    overDecimalOdds: over_decimal_odds,
+    lineValue,
+    overDecimalOdds,
+    underDecimalOdds: underDecimalOdds !== null && underDecimalOdds > 1 ? underDecimalOdds : null,
     lastUpdatedAt,
   };
 }

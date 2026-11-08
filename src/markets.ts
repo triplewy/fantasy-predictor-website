@@ -13,4 +13,26 @@ export const marketInfo: Record<string, { stat: StatKey; label: string }> = {
   player_anytime_td: { stat: "touchdowns", label: "Anytime TD" },
   player_tds_over: { stat: "touchdowns", label: "Total TDs (over 0.5 = anytime TD)" },
   player_kicking_points_alternate: { stat: "kickingPoints", label: "Kicking points" },
+  // Main (single over/under) lines, combined with the alternates into each stat's curve.
+  player_pass_yds: { stat: "passingYards", label: "Passing yards · main O/U line" },
+  player_pass_tds: { stat: "passingTouchdowns", label: "Passing TDs · main O/U line" },
+  player_pass_interceptions: { stat: "interceptions", label: "Interceptions · main O/U line" },
+  player_rush_yds: { stat: "rushingYards", label: "Rushing yards · main O/U line" },
+  player_receptions: { stat: "receptions", label: "Receptions · main O/U line" },
+  player_reception_yds: { stat: "receivingYards", label: "Receiving yards · main O/U line" },
+  player_kicking_points: { stat: "kickingPoints", label: "Kicking points · main O/U line" },
+};
+
+/**
+ * Base market for each non-touchdown stat (backend STAT_MARKETS): the stat's curve is
+ * `${base}_alternate` lines plus the `${base}` main O/U line.
+ */
+export const statBaseMarkets: Record<Exclude<StatKey, "touchdowns">, string> = {
+  passingYards: "player_pass_yds",
+  passingTouchdowns: "player_pass_tds",
+  interceptions: "player_pass_interceptions",
+  rushingYards: "player_rush_yds",
+  receivingYards: "player_reception_yds",
+  receptions: "player_receptions",
+  kickingPoints: "player_kicking_points",
 };

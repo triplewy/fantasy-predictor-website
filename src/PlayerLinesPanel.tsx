@@ -33,18 +33,18 @@ const statOrder = Object.keys(statLabels) as StatKey[];
 
 /**
  * An anytime TD bet is the same as over 0.5 total TDs, so it becomes the 0.5 line of the
- * total TDs ladder. If a book prices the same line twice, the later one in API order is
- * kept — matching how the backend's projection resolves the duplicate.
+ * total TDs ladder. If a book prices both, its anytime TD price wins — as in the backend's
+ * projection (computeExpectedStats).
  */
 function mergeAnytimeTouchdowns(lines: PlayerLine[]): PlayerLine[] {
-  const merged = lines.map((line) =>
-    line.market === "player_anytime_td" ? { ...line, market: "player_tds_over", lineValue: 0.5 } : line,
+  const anytimeBooks = new Set(
+    lines.filter((line) => line.market === "player_anytime_td").map((line) => line.bookmaker),
   );
-  const lastIndex = new Map<string, number>();
-  merged.forEach((line, index) => lastIndex.set(`${line.market}|${line.bookmaker}|${line.lineValue}`, index));
-  return merged.filter(
-    (line, index) => lastIndex.get(`${line.market}|${line.bookmaker}|${line.lineValue}`) === index,
-  );
+  return lines.flatMap((line) => {
+    if (line.market === "player_anytime_td") return [{ ...line, market: "player_tds_over", lineValue: 0.5 }];
+    if (line.market === "player_tds_over" && line.lineValue === 0.5 && anytimeBooks.has(line.bookmaker)) return [];
+    return [line];
+  });
 }
 
 
@@ -209,8 +209,9 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
   // Each bookmaker's expected value per stat, from the raw lines in API order (as the backend).
   const meansByStat = new Map<StatKey, ReturnType<typeof bookmakerMeans>>();
   for (const stat of statOrder) {
-    const statLines = data.lines.filter((line) => marketInfo[line.market]?.stat === stat);
-    if (statLines.length > 0) meansByStat.set(stat, bookmakerMeans(statLines));
+    // Per bookmaker over all its lines (alternates + main O/U, margin removed), as the backend.
+    const result = bookmakerMeans(data.lines, stat, (market) => marketInfo[market]?.stat);
+    if (result.means.length > 0 || result.excluded.length > 0) meansByStat.set(stat, result);
   }
 
   const allBookmakers = sortBookmakers(data.lines.map((line) => line.bookmaker));
