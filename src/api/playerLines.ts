@@ -138,3 +138,9 @@ export function loadPlayerLines(
   }
   return request;
 }
+
+/** Forget all cached lines so the next load fetches the latest ones from the backend. */
+export function clearPlayerLinesCache() {
+  linesRequests.clear();
+  loadedLines.clear();
+}

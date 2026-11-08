@@ -1403,6 +1403,22 @@ tbody .lines-row:hover {
   font-weight: 600;
 }
 
+.lineup-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 12px;
+  margin: -4px 0 12px;
+  color: #7a827d;
+  font-size: 12px;
+}
+
+.lineup-freshness strong {
+  color: #3a443d;
+  font-weight: 600;
+}
+
 .lineup-actions {
   display: inline-flex;
   align-items: center;

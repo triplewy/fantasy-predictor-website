@@ -113,6 +113,30 @@ function projectionNote(projection: PlayerProjection): string | null {
   }
 }
 
+/** The current time, re-rendering every minute so relative times stay current. */
+function useNow(intervalMs = 60_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
+
+/** "just now", "12 min ago", "3 h ago", "2 d ago". */
+function timeAgo(date: Date, now: number) {
+  const minutes = Math.max(0, Math.round((now - date.getTime()) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.round(hours / 24)} d ago`;
+}
+
+function formatTimestamp(date: Date) {
+  return date.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 function weekRangeLabel() {
   const { from, to } = currentNflWeek();
   const format = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -173,7 +197,17 @@ export function LineupOptimizer({
     () => roster.map((saved) => ({ ...saved, team: listedById.get(saved.id)?.team ?? saved.team })),
     [roster, listedById],
   );
-  const { projections, gamesError, isLoadingGames, hasNoGames } = useRosterProjections(rosterWithTeams);
+  const { projections, gamesError, isLoadingGames, hasNoGames, refreshCount, loadedAt } =
+    useRosterProjections(rosterWithTeams);
+  const now = useNow();
+
+  // How fresh the lineup's odds are: newest and oldest of each player's latest line update.
+  const updateTimes = roster.flatMap((player) => {
+    const projection = projections.get(player.id);
+    return projection?.status === "ready" && projection.lastUpdatedAt ? [projection.lastUpdatedAt.getTime()] : [];
+  });
+  const newestUpdate = updateTimes.length ? new Date(Math.max(...updateTimes)) : null;
+  const oldestUpdate = updateTimes.length ? new Date(Math.min(...updateTimes)) : null;
   const rosterIds = useMemo(() => new Set(roster.map((player) => player.id)), [roster]);
 
   // Search the full player list; names starting with the query come first.
@@ -415,6 +449,8 @@ export function LineupOptimizer({
           <tr className="lines-row" id={`lineup-lines-${player.id}`}>
             <td colSpan={5}>
               <PlayerLinesPanel
+                // Remount after an automatic refetch so an open panel shows the new lines.
+                key={refreshCount}
                 player={{
                   id: player.id,
                   gameId: player.gameId,
@@ -547,6 +583,26 @@ export function LineupOptimizer({
               ))}
           </div>
         </div>
+
+        {roster.length > 0 && (
+          <div className="lineup-freshness">
+            {newestUpdate && oldestUpdate ? (
+              <span
+                title={`Odds last updated ${formatTimestamp(newestUpdate)} (newest) · ${formatTimestamp(oldestUpdate)} (oldest player). Loaded into this page ${formatTimestamp(loadedAt)}.`}
+              >
+                Lines updated <strong>{timeAgo(newestUpdate, now)}</strong>
+                {oldestUpdate.getTime() !== newestUpdate.getTime() && (
+                  <>
+                    {" "}
+                    · oldest <strong>{timeAgo(oldestUpdate, now)}</strong>
+                  </>
+                )}
+              </span>
+            ) : (
+              <span>{isLoadingProjections ? "Loading lines…" : "No line updates yet"}</span>
+            )}
+          </div>
+        )}
 
         <div className="roster-search">
           <input

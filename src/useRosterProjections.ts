@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getGames, opponentLabel, type Game } from "./api/games";
-import { getPlayerLines, loadPlayerLines } from "./api/playerLines";
+import { clearPlayerLinesCache, getPlayerLines, loadPlayerLines } from "./api/playerLines";
 import type { PlayerStats } from "./api/rankings";
 import { projectStatsFromLines } from "./expectedStat";
 import { currentNflWeek } from "./nflWeek";
@@ -11,7 +11,14 @@ export type PlayerProjection =
   | { status: "no-game" }
   | { status: "no-lines"; opponent: string; gameId: string }
   | { status: "error"; message: string }
-  | { status: "ready"; stats: PlayerStats; opponent: string; gameId: string; lastUpdatedAt: Date | null };
+  | {
+      status: "ready";
+      stats: PlayerStats;
+      opponent: string;
+      gameId: string;
+      /** Newest last_updated_at across the player's lines: how fresh their odds are. */
+      lastUpdatedAt: Date | null;
+    };
 
 // Games for the week, cached for the page's lifetime (lines are cached in api/playerLines).
 let gamesRequest: Promise<Game[]> | null = null;
@@ -48,10 +55,36 @@ function loadLines(playerId: string, gameId: string) {
  * bookmaker lines (player-lines) for this week's game (games). Independent of the
  * project-players API.
  */
+// Coming back to a tab whose lines are older than this refetches them automatically.
+const autoRefreshAfterMs = 30 * 60 * 1000;
+
 export function useRosterProjections(roster: { id: string; team: string }[]) {
   const [games, setGames] = useState<Game[] | null>(null);
   const [gamesError, setGamesError] = useState<string | null>(null);
   const [results, setResults] = useState<Map<string, PlayerProjection>>(new Map());
+  // Bumped by refresh() to refetch games and lines; loadedAt is when this page last fetched.
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(() => new Date());
+
+  /** Drop cached games and lines and fetch everything again (used when returning to a stale tab). */
+  const refresh = useCallback(() => {
+    gamesRequest = null;
+    clearPlayerLinesCache();
+    setGames(null);
+    setGamesError(null);
+    setResults(new Map());
+    setLoadedAt(new Date());
+    setRefreshCount((count) => count + 1);
+  }, []);
+
+  // Returning to a tab that's been open a while: refresh rather than show old lines.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && Date.now() - loadedAt.getTime() > autoRefreshAfterMs) refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [loadedAt, refresh]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -63,7 +96,7 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [refreshCount]);
 
   const gameByTeam = useMemo(() => {
     const map = new Map<string, Game>();
@@ -125,5 +158,9 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
     isLoadingGames: games === null && gamesError === null,
     /** Games loaded, but none were returned or recognized for this week. */
     hasNoGames: games !== null && games.length === 0,
+    /** Increments on each refetch; use as a key to reload anything showing cached lines. */
+    refreshCount,
+    /** When this page last fetched games and lines. */
+    loadedAt,
   };
 }
