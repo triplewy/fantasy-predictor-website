@@ -1371,8 +1371,21 @@ tbody .lines-row:hover {
   border: 0;
 }
 
+/*
+ * Column sizing: every column shrinks to its content (width: 1% + nowrap) except
+ * Breakdown, which takes all remaining space and wraps its chips.
+ */
+.lineup-table th,
+.lineup-table td {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.lineup-table .breakdown-heading,
 .lineup-table .breakdown {
+  width: auto;
   min-width: 220px;
+  white-space: normal;
 }
 
 .lineup-toggle {

@@ -667,7 +667,7 @@ export function LineupOptimizer({
                 <th scope="col">Player</th>
                 <th scope="col" title="When this player's lines were last updated">Updated</th>
                 <th scope="col" className="points-heading">Proj</th>
-                <th scope="col">Breakdown</th>
+                <th scope="col" className="breakdown-heading">Breakdown</th>
                 <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
               </tr>
             </thead>
