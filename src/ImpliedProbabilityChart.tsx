@@ -6,7 +6,7 @@ type LinePoint = {
   lineValue: number;
   /** Average of 1 ÷ decimal odds across the bookmakers offering this line. */
   averageImplied: number;
-  books: { bookmaker: string; odds: number; implied: number }[];
+  books: { bookmaker: string; odds: number; implied: number; isMainLine: boolean; underOdds: number | null }[];
 };
 
 /** Charts are portrait: taller than they are wide. */
@@ -19,7 +19,13 @@ export function toLinePoints(lines: PlayerLine[]): LinePoint[] {
   const byLine = new Map<number, LinePoint["books"]>();
   for (const line of lines) {
     const books = byLine.get(line.lineValue) ?? [];
-    books.push({ bookmaker: line.bookmaker, odds: line.overDecimalOdds, implied: 1 / line.overDecimalOdds });
+    books.push({
+      bookmaker: line.bookmaker,
+      odds: line.overDecimalOdds,
+      implied: 1 / line.overDecimalOdds,
+      isMainLine: line.isMainLine ?? false,
+      underOdds: line.underDecimalOdds,
+    });
     byLine.set(line.lineValue, books);
   }
   return [...byLine]
@@ -107,12 +113,12 @@ export function ImpliedProbabilityChart({
     .join(" ");
   // Each bookmaker's own ladder, in its fixed color.
   const bookLadders = useMemo(() => {
-    const byBook = new Map<string, { lineValue: number; implied: number }[]>();
+    const byBook = new Map<string, { lineValue: number; implied: number; isMainLine: boolean }[]>();
     for (const point of points) {
       for (const book of point.books) {
         byBook.set(book.bookmaker, [
           ...(byBook.get(book.bookmaker) ?? []),
-          { lineValue: point.lineValue, implied: book.implied },
+          { lineValue: point.lineValue, implied: book.implied, isMainLine: book.isMainLine },
         ]);
       }
     }
@@ -165,7 +171,7 @@ export function ImpliedProbabilityChart({
 
   // Keep the tooltip inside the chart: flip to the left of the crosshair past the midpoint.
   // Beside the crosshair (right, else left), clamped so it never leaves the chart.
-  const tooltipWidth = Math.min(210, width);
+  const tooltipWidth = Math.min(250, width);
   const tooltipStyle = active
     ? (() => {
         const crosshair = x(active.lineValue);
@@ -267,16 +273,28 @@ export function ImpliedProbabilityChart({
                     .join(" ")}
                 />
               )}
-              {ladder.map((point) => (
-                <circle
-                  key={point.lineValue}
-                  className="prob-book-dot"
-                  style={{ fill: color }}
-                  cx={x(point.lineValue)}
-                  cy={y(point.implied)}
-                  r={active?.lineValue === point.lineValue ? 5 : 3.5}
-                />
-              ))}
+              {ladder.map((point) =>
+                point.isMainLine ? (
+                  // Main O/U line: larger dot with a dark ring, on the book's own curve.
+                  <circle
+                    key={point.lineValue}
+                    className="prob-book-dot main-line"
+                    style={{ fill: color }}
+                    cx={x(point.lineValue)}
+                    cy={y(point.implied)}
+                    r={active?.lineValue === point.lineValue ? 6.5 : 5.5}
+                  />
+                ) : (
+                  <circle
+                    key={point.lineValue}
+                    className="prob-book-dot"
+                    style={{ fill: color }}
+                    cx={x(point.lineValue)}
+                    cy={y(point.implied)}
+                    r={active?.lineValue === point.lineValue ? 5 : 3.5}
+                  />
+                ),
+              )}
             </g>
           ))}
 
@@ -342,7 +360,9 @@ export function ImpliedProbabilityChart({
                     {book.bookmaker}
                   </span>
                   <span>
+                    {book.isMainLine && <span className="main-line-badge">main</span>}
                     {book.odds.toFixed(2)} · {percent(book.implied)}
+                    {book.underOdds !== null && <span className="prob-tooltip-under"> · U {book.underOdds.toFixed(2)}</span>}
                   </span>
                 </li>
               ))}

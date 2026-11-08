@@ -5,7 +5,7 @@ import { ImpliedProbabilityChart } from "./ImpliedProbabilityChart";
 import { bookmakerColor, sortBookmakers } from "./bookmakerColors";
 import { BookmakerMeansStrip } from "./BookmakerMeansStrip";
 import { bookmakerMeans } from "./expectedStat";
-import { marketInfo } from "./markets";
+import { marketInfo, statBaseMarkets } from "./markets";
 
 type StatKey = keyof PlayerStats;
 
@@ -36,6 +36,24 @@ const statOrder = Object.keys(statLabels) as StatKey[];
  * total TDs ladder. If a book prices both, its anytime TD price wins — as in the backend's
  * projection (computeExpectedStats).
  */
+const mainMarkets = new Set<string>(Object.values(statBaseMarkets));
+
+/**
+ * Plot each stat's main O/U line on its alternate curve (the curve the projection uses):
+ * the main line moves into `<base>_alternate`, flagged so it's drawn distinctly, and it
+ * replaces the same book's alternate price at the same line — as in the backend.
+ */
+function mergeMainLines(lines: PlayerLine[]): PlayerLine[] {
+  const mainKeys = new Set(
+    lines.filter((line) => mainMarkets.has(line.market)).map((line) => `${line.market}_alternate|${line.bookmaker}|${line.lineValue}`),
+  );
+  return lines.flatMap((line) => {
+    if (mainMarkets.has(line.market)) return [{ ...line, market: `${line.market}_alternate`, isMainLine: true }];
+    if (mainKeys.has(`${line.market}|${line.bookmaker}|${line.lineValue}`)) return [];
+    return [line];
+  });
+}
+
 function mergeAnytimeTouchdowns(lines: PlayerLine[]): PlayerLine[] {
   const anytimeBooks = new Set(
     lines.filter((line) => line.market === "player_anytime_td").map((line) => line.bookmaker),
@@ -79,7 +97,8 @@ function MarketTable({
 }) {
   const bookmakers = sortBookmakers(lines.map((line) => line.bookmaker));
   const lineValues = [...new Set(lines.map((line) => line.lineValue))].sort((a, b) => a - b);
-  const odds = new Map(lines.map((line) => [`${line.lineValue}|${line.bookmaker}`, line.overDecimalOdds]));
+  const linesByCell = new Map(lines.map((line) => [`${line.lineValue}|${line.bookmaker}`, line]));
+  const odds = new Map([...linesByCell].map(([key, line]) => [key, line.overDecimalOdds]));
 
   return (
     <div className="lines-table-scroll">
@@ -125,7 +144,15 @@ function MarketTable({
                       className={bookmaker === focusedBookmaker ? "numeric focused" : "numeric"}
                       key={bookmaker}
                     >
-                      {value === undefined ? <span className="no-line">—</span> : value.toFixed(2)}
+                      {value === undefined ? (
+                        <span className="no-line">—</span>
+                      ) : linesByCell.get(`${lineValue}|${bookmaker}`)?.isMainLine ? (
+                        <strong className="main-line-cell" title="Main over/under line">
+                          {value.toFixed(2)}
+                        </strong>
+                      ) : (
+                        value.toFixed(2)
+                      )}
                     </td>
                   );
                 })}
@@ -199,7 +226,7 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
 
   // Group lines by the projected stat they feed, then by market.
   const sections = new Map<StatKey | "other", Map<string, PlayerLine[]>>();
-  for (const line of mergeAnytimeTouchdowns(data.lines)) {
+  for (const line of mergeAnytimeTouchdowns(mergeMainLines(data.lines))) {
     const section = marketInfo[line.market]?.stat ?? "other";
     const markets = sections.get(section) ?? new Map<string, PlayerLine[]>();
     markets.set(line.market, [...(markets.get(line.market) ?? []), line]);
@@ -277,6 +304,10 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
         <span className="legend-key" aria-hidden="true">
           <span className="legend-median" />
           Median
+        </span>
+        <span className="legend-key" aria-hidden="true">
+          <span className="legend-main-line" />
+          Main O/U line
         </span>
         <span className="lines-legend-hint">
           {focusedBookmaker ? (

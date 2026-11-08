@@ -9,6 +9,8 @@ export type PlayerLine = {
   overDecimalOdds: number;
   /** Decimal odds for the under, when the book prices both sides (main O/U lines). */
   underDecimalOdds: number | null;
+  /** Set by the lines panel when a main O/U line is plotted on its stat's alternate curve. */
+  isMainLine?: boolean;
   lastUpdatedAt: Date;
 };
 

@@ -922,6 +922,41 @@ tbody .lines-row:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* Main over/under line: bigger dot with a dark ring, so it stands out on the book's curve. */
+.prob-book-dot.main-line {
+  stroke: #28312b;
+  stroke-width: 2;
+}
+
+.legend-main-line {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #28312b;
+  border-radius: 50%;
+  background: #a9b0ab;
+}
+
+.main-line-badge {
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: #28312b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.prob-tooltip-under {
+  color: #7a827d;
+}
+
+.main-line-cell {
+  color: #1f3527;
+  text-decoration: underline;
+  text-decoration-color: #9fb3a5;
+  text-underline-offset: 2px;
+}
+
 .prob-tooltip-diff {
   color: #7a827d;
 }
