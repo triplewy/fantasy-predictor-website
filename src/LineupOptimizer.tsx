@@ -537,7 +537,8 @@ export function LineupOptimizer({
                 <>
                   <span className="lineup-optimal-note">
                     Optimal {optimal.total.toFixed(1)} pts{" "}
-                    <span className="lineup-diff">(+{pointsBehindOptimal.toFixed(1)})</span>
+                    {/* Your lineup relative to optimal, so it reads as points you're missing. */}
+                    <span className="lineup-diff">(−{pointsBehindOptimal.toFixed(1)})</span>
                   </span>
                   <button type="button" className="format-option" onClick={applyOptimalLineup}>
                     Use optimal lineup
