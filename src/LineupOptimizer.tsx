@@ -6,12 +6,21 @@ import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import { getPointsBreakdown, type ScoringSettings } from "./scoring";
 import { useRosterProjections, type PlayerProjection } from "./useRosterProjections";
 import {
+  isSavedLineup,
+  lineupFromOptimal,
   lineupPresets,
   optimizeLineup,
+  placeNewPlayer,
+  reconcileLineup,
+  sitPlayer,
+  slotEligibility,
   slotLabels,
   slotTypes,
+  startPlayer,
   type LineupFormat,
   type RosterPlayer,
+  type SavedLineup,
+  type SlotType,
 } from "./lineup";
 import { readStorageJson, writeStorageJson } from "./storage";
 
@@ -19,6 +28,15 @@ type SavedRosterPlayer = Pick<Player, "id" | "name" | "position" | "team">;
 
 const rosterStorageKey = "fantasy-my-team";
 const formatStorageKey = "fantasy-lineup-format";
+/** The user's own starters and bench (start/sit choices), separate from the team list. */
+const lineupStorageKey = "fantasy-my-lineup";
+
+function readLineup(): SavedLineup | null {
+  const stored = readStorageJson(lineupStorageKey);
+  return isSavedLineup(stored) ? stored : null;
+}
+
+const shortSlotLabel = (slot: SlotType) => (slot === "SUPERFLEX" ? "SFLEX" : slot);
 const positions: Position[] = ["QB", "RB", "WR", "TE", "K"];
 
 // The full player list is large and rarely changes, so it's fetched once per page load and
@@ -124,6 +142,8 @@ export function LineupOptimizer({
   const [format, setFormat] = useState<LineupFormat>(readFormat);
   const [query, setQuery] = useState("");
   const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false);
+  // null until the user (or the first optimal fill) sets a lineup.
+  const [savedLineup, setSavedLineup] = useState<SavedLineup | null>(readLineup);
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [playerList, setPlayerList] = useState<ListedPlayer[] | null>(null);
   const [playerListError, setPlayerListError] = useState<string | null>(null);
@@ -143,6 +163,9 @@ export function LineupOptimizer({
 
   useEffect(() => writeStorageJson(rosterStorageKey, roster), [roster]);
   useEffect(() => writeStorageJson(formatStorageKey, format), [format]);
+  useEffect(() => {
+    if (savedLineup) writeStorageJson(lineupStorageKey, savedLineup);
+  }, [savedLineup]);
 
   const listedById = useMemo(() => new Map((playerList ?? []).map((player) => [player.id, player])), [playerList]);
   // Latest team from /players (trades, signings), falling back to the one saved when added.
@@ -194,17 +217,56 @@ export function LineupOptimizer({
     };
   });
   const isLoadingProjections = isLoadingGames || rosterWithPoints.some((player) => player.note === "Loading lines…");
-  const lineup = optimizeLineup(rosterWithPoints, format);
+  const optimal = optimizeLineup(rosterWithPoints, format);
   const starterCount = slotTypes.reduce((total, slot) => total + format[slot], 0);
+
+  // The user's lineup, fitted to the current format and team (see reconcileLineup). Every
+  // start/sit action works from this, so slot indexes always line up with what's shown.
+  const lineup = useMemo(
+    () => reconcileLineup(savedLineup ?? { starters: [], bench: [] }, format, roster),
+    [savedLineup, format, roster],
+  );
+
+  // First visit (nothing saved yet): start from the optimal lineup once projections are in.
+  useEffect(() => {
+    if (savedLineup === null && roster.length > 0 && !isLoadingProjections) {
+      setSavedLineup(lineupFromOptimal(optimal));
+    }
+    // optimal is derived from the same inputs; only re-check when loading settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedLineup, roster.length, isLoadingProjections]);
+
+  const playersById = new Map(rosterWithPoints.map((player) => [player.id, player]));
+  const starters = lineup.starters.map(({ slot, playerId }) => ({
+    slot,
+    player: playerId ? (playersById.get(playerId) ?? null) : null,
+  }));
+  const bench = lineup.bench.flatMap((id) => playersById.get(id) ?? []);
+  const currentTotal = starters.reduce((total, { player }) => total + (player?.points ?? 0), 0);
+  const pointsBehindOptimal = optimal.total - currentTotal;
+  const isOptimal = pointsBehindOptimal < 0.05;
+  const optimalStarterIds = new Set(optimal.starters.flatMap(({ player }) => (player ? [player.id] : [])));
 
   function addPlayer(player: ListedPlayer) {
     const { id, name, position, team } = player;
     setRoster((current) => (current.some((item) => item.id === id) ? current : [...current, { id, name, position, team }]));
+    // Before the first lineup exists, the first optimal fill will place them.
+    if (savedLineup) setSavedLineup(placeNewPlayer(lineup, id, position));
     setQuery("");
   }
 
   function removePlayer(id: string) {
     setRoster((current) => current.filter((player) => player.id !== id));
+    if (savedLineup) {
+      setSavedLineup({
+        starters: lineup.starters.map((entry) => (entry.playerId === id ? { ...entry, playerId: null } : entry)),
+        bench: lineup.bench.filter((benchId) => benchId !== id),
+      });
+    }
+  }
+
+  function applyOptimalLineup() {
+    setSavedLineup(lineupFromOptimal(optimal));
   }
 
   function setSlotCount(slot: keyof LineupFormat, value: number) {
@@ -223,7 +285,25 @@ export function LineupOptimizer({
     );
   }
 
-  function renderRow(slotLabel: string, player: RosterPlayer | null, emptyLabel: string, key: string) {
+  /** Bench player's "Start at…" choices: every slot they're eligible for, noting swaps. */
+  function startOptions(player: RosterPlayer) {
+    return lineup.starters.flatMap(({ slot }, index) => {
+      if (!slotEligibility[slot].includes(player.position)) return [];
+      const sameType = lineup.starters.filter((entry) => entry.slot === slot).length;
+      const number = lineup.starters.slice(0, index + 1).filter((entry) => entry.slot === slot).length;
+      const occupant = starters[index].player;
+      const label = `${shortSlotLabel(slot)}${sameType > 1 ? ` ${number}` : ""}${occupant ? ` (swap ${occupant.name})` : " (empty)"}`;
+      return [{ index, label }];
+    });
+  }
+
+  function renderRow(
+    slotLabel: string,
+    player: RosterPlayer | null,
+    emptyLabel: string,
+    key: string,
+    context: { kind: "starter"; slotIndex: number } | { kind: "bench" },
+  ) {
     // Players with a game this week can be opened to see their raw bookmaker lines.
     const canExpand = player !== null && player.gameId !== null;
     const isExpanded = canExpand && expandedPlayerId === player.id;
@@ -255,6 +335,12 @@ export function LineupOptimizer({
             ) : (
               renderPlayerCell(player)
             )}
+            {player && context.kind === "starter" && player.hasProjection && !optimalStarterIds.has(player.id) && (
+              <span className="lineup-tag sit">Not in optimal</span>
+            )}
+            {player && context.kind === "bench" && optimalStarterIds.has(player.id) && (
+              <span className="lineup-tag start">Optimal starter</span>
+            )}
           </td>
           <td className="points">
             {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">{player.note}</span>}
@@ -275,6 +361,41 @@ export function LineupOptimizer({
           </td>
           <td className="action">
             {player && (
+              <span className="lineup-actions">
+                {context.kind === "starter" ? (
+                  <button
+                    type="button"
+                    className="row-action"
+                    aria-label={`Move ${player.name} to the bench`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSavedLineup(sitPlayer(lineup, context.slotIndex));
+                    }}
+                  >
+                    Sit
+                  </button>
+                ) : (
+                  <select
+                    className="start-select"
+                    aria-label={`Start ${player.name} at…`}
+                    value=""
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      const slotIndex = Number(event.currentTarget.value);
+                      if (!Number.isNaN(slotIndex)) setSavedLineup(startPlayer(lineup, player.id, slotIndex));
+                    }}
+                    disabled={startOptions(player).length === 0}
+                  >
+                    <option value="" disabled>
+                      Start at…
+                    </option>
+                    {startOptions(player).map((option) => (
+                      <option key={option.index} value={option.index}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
               <button
                 type="button"
                 className="row-action"
@@ -286,6 +407,7 @@ export function LineupOptimizer({
               >
                 Remove
               </button>
+              </span>
             )}
           </td>
         </tr>
@@ -316,7 +438,7 @@ export function LineupOptimizer({
         <div>
           <h2>Lineup optimizer</h2>
           <p>
-            Add your team and the best lineup is filled from this week's projections
+            Add your team, set your starters, and compare against the optimal lineup
             {` · ${weekRangeLabel()}`}
           </p>
         </div>
@@ -405,8 +527,24 @@ export function LineupOptimizer({
 
       <div className="lineup-body">
         <div className="lineup-panel-heading">
-          <h3>Optimal lineup</h3>
-          <span className="lineup-total">{lineup.total.toFixed(1)} pts</span>
+          <h3>My lineup</h3>
+          <div className="lineup-totals">
+            <span className="lineup-total">{currentTotal.toFixed(1)} pts</span>
+            {roster.length > 0 &&
+              (isOptimal ? (
+                <span className="lineup-optimal-note">✓ Optimal lineup</span>
+              ) : (
+                <>
+                  <span className="lineup-optimal-note">
+                    Optimal {optimal.total.toFixed(1)} pts{" "}
+                    <span className="lineup-diff">(+{pointsBehindOptimal.toFixed(1)})</span>
+                  </span>
+                  <button type="button" className="format-option" onClick={applyOptimalLineup}>
+                    Use optimal lineup
+                  </button>
+                </>
+              ))}
+          </div>
         </div>
 
         <div className="roster-search">
@@ -467,24 +605,25 @@ export function LineupOptimizer({
               </tr>
             </thead>
             <tbody>
-              {lineup.starters.map(({ slot, player }, index) =>
+              {starters.map(({ slot, player }, index) =>
                 renderRow(
-                  slot === "SUPERFLEX" ? "SFLEX" : slot,
+                  shortSlotLabel(slot),
                   player,
-                  `Empty — add a ${slotLabels[slot].replace(/ \(.*/, "")} eligible player`,
+                  "Empty",
                   `${slot}-${index}`,
+                  { kind: "starter", slotIndex: index },
                 ),
               )}
             </tbody>
           </table>
         </div>
 
-        {lineup.bench.length > 0 && (
+        {bench.length > 0 && (
           <>
             <h3 className="bench-heading">Bench</h3>
             <div className="lineup-table-scroll">
               <table className="lineup-table bench">
-                <tbody>{lineup.bench.map((player) => renderRow("BN", player, "", player.id))}</tbody>
+                <tbody>{bench.map((player) => renderRow("BN", player, "", player.id, { kind: "bench" }))}</tbody>
               </table>
             </div>
           </>
