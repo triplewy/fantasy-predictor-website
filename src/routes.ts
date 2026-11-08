@@ -1,9 +1,22 @@
 /**
- * Hash routing: #/rankings and #/lineup-optimizer. The part after "#" never reaches the
- * server, so every URL loads index.html and works on GitHub Pages (refresh, bookmarks,
- * shared links) without server rewrites.
+ * Hash routing. The part after "#" never reaches the server, so every URL loads index.html
+ * and works on GitHub Pages (refresh, bookmarks, shared links) without server rewrites.
+ *   #/rankings              Rankings, all positions
+ *   #/rankings/qb … /flex   Rankings filtered to a position tab
+ *   #/lineup-optimizer      Lineup optimizer
  */
 export type Page = "rankings" | "lineup";
+export type PositionFilter = "ALL" | "QB" | "RB" | "WR" | "TE" | "FLEX" | "K";
+
+const positionSlugs: Record<PositionFilter, string> = {
+  ALL: "",
+  QB: "qb",
+  RB: "rb",
+  WR: "wr",
+  TE: "te",
+  FLEX: "flex",
+  K: "k",
+};
 
 const pageHashes: Record<Page, string> = {
   rankings: "#/rankings",
@@ -28,13 +41,42 @@ function isRouteHash(hash: string) {
   return hash === "" || hash === "#" || hash.startsWith("#/");
 }
 
+type Route = { page: Page; position: PositionFilter };
+
+/** Parse a route hash (case-insensitive). Unknown routes and positions fall back to Rankings/All. */
+function parseHash(hash: string): Route {
+  const lower = hash.toLowerCase();
+  if (lower === pageHashes.lineup) return { page: "lineup", position: "ALL" };
+  const rankings = lower.match(/^#\/rankings(?:\/([a-z]+))?\/?$/);
+  if (rankings) {
+    const slug = rankings[1] ?? "";
+    const position = (Object.keys(positionSlugs) as PositionFilter[]).find((key) => positionSlugs[key] === slug);
+    return { page: "rankings", position: position ?? "ALL" };
+  }
+  return { page: legacyHashes[lower] ?? "rankings", position: "ALL" };
+}
+
+function hashFor({ page, position }: Route): string {
+  if (page === "lineup") return pageHashes.lineup;
+  return position === "ALL" ? pageHashes.rankings : `${pageHashes.rankings}/${positionSlugs[position]}`;
+}
+
 function pageForHash(hash: string): Page {
-  if (hash === pageHashes.lineup) return "lineup";
-  return legacyHashes[hash] ?? "rankings";
+  return parseHash(hash).page;
 }
 
 export function currentPage(): Page {
   return pageForHash(window.location.hash);
+}
+
+/** The Rankings position tab in the URL ("ALL" when none, or on another page). */
+export function currentRankingsPosition(): PositionFilter {
+  return parseHash(window.location.hash).position;
+}
+
+/** URL for a Rankings position tab, e.g. "#/rankings/wr". */
+export function rankingsHref(position: PositionFilter): string {
+  return hashFor({ page: "rankings", position });
 }
 
 function replaceHash(hash: string) {
@@ -51,7 +93,7 @@ function replaceHash(hash: string) {
 export function normalizeLocation() {
   const { hash } = window.location;
   if (!isRouteHash(hash)) return;
-  const canonical = pageHashes[pageForHash(hash)];
+  const canonical = hashFor(parseHash(hash));
   if (hash !== canonical) replaceHash(canonical);
 }
 
@@ -74,7 +116,7 @@ export function restoreRouteAfterSignIn() {
     // Ignore: fall through to normalizing.
   }
   if (saved && isRouteHash(saved) && isRouteHash(window.location.hash)) {
-    replaceHash(pageHashes[pageForHash(saved)]);
+    replaceHash(hashFor(parseHash(saved)));
   } else {
     normalizeLocation();
   }

@@ -3,7 +3,14 @@ import { signOut, useSession } from "./AuthGate";
 import { LineupOptimizer } from "./LineupOptimizer";
 import { currentNflWeek } from "./nflWeek";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
-import { currentPage, pageHref, type Page } from "./routes";
+import {
+  currentPage,
+  currentRankingsPosition,
+  pageHref,
+  rankingsHref,
+  type Page,
+  type PositionFilter,
+} from "./routes";
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
   getPointsBreakdown,
@@ -16,7 +23,6 @@ import {
 } from "./scoring";
 import { getPlayerProjections, type Player, type Position, type ProjectionWeek } from "./api/rankings";
 
-type PositionFilter = "ALL" | "FLEX" | Position;
 const positions: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K"];
 const excludedPositions: ("ALL" | Position)[] = ["ALL", "QB", "RB", "WR", "TE", "K"];
 
@@ -142,7 +148,11 @@ const pageTabs: { page: Page; title: string }[] = [
 ];
 
 function App() {
-  const [position, setPosition] = useState<PositionFilter>("ALL");
+  // The Rankings position tab lives in the URL (#/rankings/wr); see routes.ts.
+  const [position, setPositionState] = useState<PositionFilter>(currentRankingsPosition);
+  const setPosition = (next: PositionFilter) => {
+    window.location.hash = rankingsHref(next);
+  };
   const [search, setSearch] = useState("");
   const [players, setPlayers] = useState<Player[]>([]);
   const [projectionWeek, setProjectionWeek] = useState<ProjectionWeek | null>(null);
@@ -167,7 +177,11 @@ function App() {
 
   // Hash routing (see routes.ts): follow tab clicks, back/forward and redirects.
   useEffect(() => {
-    const onHashChange = () => setPage(currentPage());
+    const onHashChange = () => {
+      setPage(currentPage());
+      // Leaving Rankings keeps the last tab, so returning to Rankings restores it.
+      if (currentPage() === "rankings") setPositionState(currentRankingsPosition());
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -368,7 +382,8 @@ function App() {
           {pageTabs.map((tab) => (
             <a
               key={tab.page}
-              href={pageHref(tab.page)}
+              // Rankings links back to the last position tab viewed.
+              href={tab.page === "rankings" ? rankingsHref(position) : pageHref(tab.page)}
               className={page === tab.page ? "page-tab active" : "page-tab"}
               aria-current={page === tab.page ? "page" : undefined}
             >
