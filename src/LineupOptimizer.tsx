@@ -135,6 +135,22 @@ function formatTimestamp(date: Date) {
   return date.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+/** Compact Proj-column label for a player without a projection; the full note is the tooltip. */
+function shortNote(note: string | null): string {
+  switch (note) {
+    case "No game this week":
+      return "Bye";
+    case "No lines yet":
+      return "—";
+    case "Lines unavailable":
+      return "Err";
+    case "Loading lines…":
+      return "…";
+    default:
+      return note ?? "—";
+  }
+}
+
 function weekRangeLabel() {
   const { from, to } = currentNflWeek();
   const format = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
@@ -386,7 +402,7 @@ export function LineupOptimizer({
             ) : null}
           </td>
           <td className="points">
-            {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty">{player.note}</span>}
+            {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty" title={player.note ?? undefined}>{shortNote(player.note)}</span>}
           </td>
           <td className="breakdown">
             {player && player.breakdown.length > 0 && (
