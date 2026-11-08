@@ -279,7 +279,6 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
   const formatMargin = (margin: number) => `${(margin * 100).toFixed(1)}%`;
 
   const lastUpdated = new Date(Math.max(...data.lines.map((line) => line.lastUpdatedAt.getTime())));
-  const bookmakerCount = new Set(data.lines.map((line) => line.bookmaker)).size;
   const orderedSections = [...statOrder, "other" as const].filter((key) => sections.has(key));
 
   return (
@@ -288,9 +287,7 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
         <div>
           <p className="menu-title">Bookmaker lines</p>
           <p className="menu-description">
-            Vig-removed implied probability of the over at each line, from {bookmakerCount} bookmaker
-            {bookmakerCount === 1 ? "" : "s"} — the same fair prices the projected stats are calculated
-            from. Hover a point for the raw odds.
+            Vig-removed implied probability of the over at each line
           </p>
         </div>
         <div className="lines-header-side">
