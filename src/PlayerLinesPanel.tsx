@@ -4,7 +4,7 @@ import type { PlayerStats } from "./api/rankings";
 import { ImpliedProbabilityChart } from "./ImpliedProbabilityChart";
 import { bookmakerColor, sortBookmakers } from "./bookmakerColors";
 import { BookmakerMeansStrip } from "./BookmakerMeansStrip";
-import { bookmakerMeans } from "./expectedStat";
+import { bookmakerMeans, bookmakerVig, removeVigFromCurve } from "./expectedStat";
 import { marketInfo, statBaseMarkets } from "./markets";
 
 type StatKey = keyof PlayerStats;
@@ -54,6 +54,27 @@ function mergeMainLines(lines: PlayerLine[]): PlayerLine[] {
   });
 }
 
+/**
+ * Replace each bookmaker's Over prices with vig-removed (fair) prices, curve by curve —
+ * a curve being one book's lines for one stat after the main-line and anytime-TD merges —
+ * exactly as the projection does. Unrecognized markets stay raw. Order is preserved.
+ */
+function withVigRemoved(lines: PlayerLine[]): PlayerLine[] {
+  const curves = new Map<string, number[]>();
+  lines.forEach((line, index) => {
+    if (!marketInfo[line.market]) return;
+    const key = `${line.bookmaker}|${line.market}`;
+    curves.set(key, [...(curves.get(key) ?? []), index]);
+  });
+  const result = [...lines];
+  for (const indexes of curves.values()) {
+    removeVigFromCurve(indexes.map((index) => lines[index])).forEach((fair, i) => {
+      result[indexes[i]] = fair;
+    });
+  }
+  return result;
+}
+
 function mergeAnytimeTouchdowns(lines: PlayerLine[]): PlayerLine[] {
   const anytimeBooks = new Set(
     lines.filter((line) => line.market === "player_anytime_td").map((line) => line.bookmaker),
@@ -84,6 +105,16 @@ function formatDateTime(date: Date) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+/** Hover text for a table cell: fair vs raw price, and main-line note. */
+function rawOddsTitle(line: PlayerLine | undefined): string | undefined {
+  if (!line) return undefined;
+  const parts = [line.isMainLine ? "Main over/under line" : null];
+  if (line.rawOverDecimalOdds !== undefined && Math.abs(line.rawOverDecimalOdds - line.overDecimalOdds) > 0.005) {
+    parts.push(`Fair ${line.overDecimalOdds.toFixed(2)} (raw ${line.rawOverDecimalOdds.toFixed(2)})`);
+  }
+  return parts.filter(Boolean).join(" · ") || undefined;
 }
 
 function MarketTable({
@@ -146,12 +177,14 @@ function MarketTable({
                     >
                       {value === undefined ? (
                         <span className="no-line">—</span>
-                      ) : linesByCell.get(`${lineValue}|${bookmaker}`)?.isMainLine ? (
-                        <strong className="main-line-cell" title="Main over/under line">
-                          {value.toFixed(2)}
-                        </strong>
                       ) : (
-                        value.toFixed(2)
+                        <span title={rawOddsTitle(linesByCell.get(`${lineValue}|${bookmaker}`))}>
+                          {linesByCell.get(`${lineValue}|${bookmaker}`)?.isMainLine ? (
+                            <strong className="main-line-cell">{value.toFixed(2)}</strong>
+                          ) : (
+                            value.toFixed(2)
+                          )}
+                        </span>
                       )}
                     </td>
                   );
@@ -226,7 +259,7 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
 
   // Group lines by the projected stat they feed, then by market.
   const sections = new Map<StatKey | "other", Map<string, PlayerLine[]>>();
-  for (const line of mergeAnytimeTouchdowns(mergeMainLines(data.lines))) {
+  for (const line of withVigRemoved(mergeAnytimeTouchdowns(mergeMainLines(data.lines)))) {
     const section = marketInfo[line.market]?.stat ?? "other";
     const markets = sections.get(section) ?? new Map<string, PlayerLine[]>();
     markets.set(line.market, [...(markets.get(line.market) ?? []), line]);
@@ -242,6 +275,8 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
   }
 
   const allBookmakers = sortBookmakers(data.lines.map((line) => line.bookmaker));
+  const vigByBookmaker = new Map(bookmakerVig(data.lines).map((vig) => [vig.bookmaker, vig]));
+  const formatMargin = (margin: number) => `${(margin * 100).toFixed(1)}%`;
 
   const lastUpdated = new Date(Math.max(...data.lines.map((line) => line.lastUpdatedAt.getTime())));
   const bookmakerCount = new Set(data.lines.map((line) => line.bookmaker)).size;
@@ -253,9 +288,9 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
         <div>
           <p className="menu-title">Bookmaker lines</p>
           <p className="menu-description">
-            Implied probability of the over (1 ÷ decimal odds) at each line, from {bookmakerCount}{" "}
-            bookmaker{bookmakerCount === 1 ? "" : "s"}. These lines are what the projected stats are
-            based on.
+            Vig-removed implied probability of the over at each line, from {bookmakerCount} bookmaker
+            {bookmakerCount === 1 ? "" : "s"} — the same fair prices the projected stats are calculated
+            from. Hover a point for the raw odds.
           </p>
         </div>
         <div className="lines-header-side">
@@ -318,6 +353,32 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
             "Click a bookmaker to compare it with the average"
           )}
         </span>
+      </div>
+
+      <div className="vig-summary" aria-label="Bookmaker margin (vig)">
+        <span
+          className="vig-title"
+          title="Overround of each bookmaker's two-sided (over + under) lines: 1/over + 1/under − 1. The median is what the projection uses to de-vig over-only lines."
+        >
+          Vig · median margin
+        </span>
+        {allBookmakers.map((bookmaker) => {
+          const vig = vigByBookmaker.get(bookmaker);
+          return (
+            <span
+              key={bookmaker}
+              className="vig-book"
+              title={
+                vig?.median != null
+                  ? `${bookmaker}: median ${formatMargin(vig.median)} · average ${formatMargin(vig.average!)} over ${vig.twoSidedLines} two-sided line${vig.twoSidedLines === 1 ? "" : "s"}`
+                  : `${bookmaker}: no two-sided lines, so its prices are shown raw (as in the projection)`
+              }
+            >
+              <span className="legend-dot" style={{ background: bookmakerColor(bookmaker) }} aria-hidden="true" />
+              {bookmaker} <strong>{vig?.median != null ? formatMargin(vig.median) : "—"}</strong>
+            </span>
+          );
+        })}
       </div>
 
       <div className="lines-sections">

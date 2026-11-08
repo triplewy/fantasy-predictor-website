@@ -11,6 +11,8 @@ export type PlayerLine = {
   underDecimalOdds: number | null;
   /** Set by the lines panel when a main O/U line is plotted on its stat's alternate curve. */
   isMainLine?: boolean;
+  /** Set by the lines panel when overDecimalOdds has been replaced by the vig-removed price. */
+  rawOverDecimalOdds?: number;
   lastUpdatedAt: Date;
 };
 

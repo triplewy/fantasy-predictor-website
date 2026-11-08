@@ -1059,6 +1059,37 @@ tbody .lines-row:hover {
   font-size: 12px;
 }
 
+.vig-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid #edf0ed;
+  color: #5d665f;
+  font-size: 12px;
+}
+
+.vig-title {
+  color: #7a827d;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: help;
+}
+
+.vig-book {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vig-book strong {
+  color: #28312b;
+}
+
 .legend-key {
   display: inline-flex;
   align-items: center;

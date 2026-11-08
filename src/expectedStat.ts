@@ -203,3 +203,36 @@ export function projectStatsFromLines(lines: PlayerLine[]): PlayerStats {
   });
   return stats;
 }
+
+/**
+ * One bookmaker's curve for one stat (already merged: alternates + main line, anytime TD as
+ * the 0.5 line) with its margin removed, exactly as the projection does — for display.
+ * Each line's overDecimalOdds becomes the fair price; the original is kept as rawOverDecimalOdds.
+ */
+export function removeVigFromCurve<T extends PlayerLine>(curve: T[]): (T & { rawOverDecimalOdds: number })[] {
+  const fair = removeVig(
+    curve.map((line) => ({ line: line.lineValue, overPrice: line.overDecimalOdds, underPrice: line.underDecimalOdds })),
+  );
+  return curve.map((line, index) => ({
+    ...line,
+    overDecimalOdds: fair[index].overPrice ?? line.overDecimalOdds,
+    rawOverDecimalOdds: line.overDecimalOdds,
+  }));
+}
+
+/** Margin summary for one bookmaker across all its two-sided (over + under) lines. */
+export type BookmakerVig = { bookmaker: string; median: number | null; average: number | null; twoSidedLines: number };
+
+export function bookmakerVig(lines: PlayerLine[]): BookmakerVig[] {
+  return [...groupByBookmaker(lines)].map(([bookmaker, bookLines]) => {
+    const margins = bookLines
+      .filter((line) => line.underDecimalOdds !== null)
+      .map((line) => lineMargin(line.overDecimalOdds, line.underDecimalOdds!))
+      .sort((a, b) => a - b);
+    if (margins.length === 0) return { bookmaker, median: null, average: null, twoSidedLines: 0 };
+    const middle = Math.floor(margins.length / 2);
+    const median = margins.length % 2 ? margins[middle] : (margins[middle - 1] + margins[middle]) / 2;
+    const average = margins.reduce((total, margin) => total + margin, 0) / margins.length;
+    return { bookmaker, median, average, twoSidedLines: margins.length };
+  });
+}

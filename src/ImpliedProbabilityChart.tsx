@@ -6,7 +6,16 @@ type LinePoint = {
   lineValue: number;
   /** Average of 1 ÷ decimal odds across the bookmakers offering this line. */
   averageImplied: number;
-  books: { bookmaker: string; odds: number; implied: number; isMainLine: boolean; underOdds: number | null }[];
+  books: {
+    bookmaker: string;
+    /** Vig-removed (fair) Over price, or raw when the book has no two-sided lines. */
+    odds: number;
+    /** The book's original Over price, when it differs from `odds`. */
+    rawOdds: number | null;
+    implied: number;
+    isMainLine: boolean;
+    underOdds: number | null;
+  }[];
 };
 
 /** Charts are portrait: taller than they are wide. */
@@ -22,6 +31,10 @@ export function toLinePoints(lines: PlayerLine[]): LinePoint[] {
     books.push({
       bookmaker: line.bookmaker,
       odds: line.overDecimalOdds,
+      rawOdds:
+        line.rawOverDecimalOdds !== undefined && Math.abs(line.rawOverDecimalOdds - line.overDecimalOdds) > 0.005
+          ? line.rawOverDecimalOdds
+          : null,
       implied: 1 / line.overDecimalOdds,
       isMainLine: line.isMainLine ?? false,
       underOdds: line.underDecimalOdds,
@@ -362,6 +375,7 @@ export function ImpliedProbabilityChart({
                   <span>
                     {book.isMainLine && <span className="main-line-badge">main</span>}
                     {book.odds.toFixed(2)} · {percent(book.implied)}
+                    {book.rawOdds !== null && <span className="prob-tooltip-under"> · raw {book.rawOdds.toFixed(2)}</span>}
                     {book.underOdds !== null && <span className="prob-tooltip-under"> · U {book.underOdds.toFixed(2)}</span>}
                   </span>
                 </li>
