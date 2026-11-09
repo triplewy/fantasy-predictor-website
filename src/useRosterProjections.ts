@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getGames, opponentLabel, type Game } from "./api/games";
 import { clearPlayerLinesCache, getPlayerLines, loadPlayerLines } from "./api/playerLines";
 import type { PlayerStats } from "./api/rankings";
-import { projectStatsFromLines } from "./expectedStat";
+import { getTeamProjections, type TdCalibration } from "./api/teams";
+import { applyTdFactor, projectStatsFromLines } from "./expectedStat";
 import { currentNflWeek } from "./nflWeek";
 import { teamCode } from "./teams";
 
@@ -18,6 +19,8 @@ export type PlayerProjection =
       gameId: string;
       /** Newest last_updated_at across the player's lines: how fresh their odds are. */
       lastUpdatedAt: Date | null;
+      /** The team's TD scale from project-teams (stats.touchdowns is already scaled); null → fallback ratio. */
+      tdCalibration: TdCalibration | null;
     };
 
 // Games for the week, cached for the page's lifetime (lines are cached in api/playerLines).
@@ -29,6 +32,27 @@ function loadGames() {
     throw error;
   });
   return gamesRequest;
+}
+
+// Each team's TD scale (project-teams), cached like games. TDs are projected from anytime
+// prices, which carry margin; project-teams says how much to scale each team's TDs so
+// they add up to what its game lines imply, matching project-players.
+let tdCalibrationRequest: Promise<Map<string, TdCalibration>> | null = null;
+
+function loadTdCalibrations() {
+  tdCalibrationRequest ??= getTeamProjections(currentNflWeek())
+    .then((teams) => {
+      const byTeam = new Map<string, TdCalibration>();
+      for (const team of teams) if (team.tdCalibration) byTeam.set(teamCode(team.team), team.tdCalibration);
+      return byTeam;
+    })
+    .catch((error: unknown) => {
+      tdCalibrationRequest = null; // retry on the next attempt
+      // Projections still work without it: TDs fall back to the backend's average ratio.
+      console.warn("Could not load team TD calibration; using the fallback ratio.", error);
+      return new Map<string, TdCalibration>();
+    });
+  return tdCalibrationRequest;
 }
 
 // At most a few player-lines requests in flight, so a full roster doesn't burst ~15 calls.
@@ -60,6 +84,7 @@ const autoRefreshAfterMs = 30 * 60 * 1000;
 
 export function useRosterProjections(roster: { id: string; team: string }[]) {
   const [games, setGames] = useState<Game[] | null>(null);
+  const [tdCalibrations, setTdCalibrations] = useState<Map<string, TdCalibration> | null>(null);
   const [gamesError, setGamesError] = useState<string | null>(null);
   const [results, setResults] = useState<Map<string, PlayerProjection>>(new Map());
   // Bumped by refresh() to refetch games and lines; loadedAt is when this page last fetched.
@@ -69,8 +94,10 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
   /** Drop cached games and lines and fetch everything again (used when returning to a stale tab). */
   const refresh = useCallback(() => {
     gamesRequest = null;
+    tdCalibrationRequest = null;
     clearPlayerLinesCache();
     setGames(null);
+    setTdCalibrations(null);
     setGamesError(null);
     setResults(new Map());
     setLoadedAt(new Date());
@@ -88,6 +115,7 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
 
   useEffect(() => {
     let isCurrent = true;
+    loadTdCalibrations().then((loaded) => isCurrent && setTdCalibrations(loaded));
     loadGames()
       .then((loaded) => isCurrent && setGames(loaded))
       .catch((error: unknown) => {
@@ -111,7 +139,8 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
   const rosterKey = roster.map((player) => `${player.id}:${player.team}`).sort().join(",");
 
   useEffect(() => {
-    if (!games) return;
+    // Wait for the TD scales too, so projections don't jump once they arrive.
+    if (!games || !tdCalibrations) return;
     let isCurrent = true;
     const update = (id: string, projection: PlayerProjection) => {
       if (isCurrent) setResults((current) => new Map(current).set(id, projection));
@@ -126,11 +155,13 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
         continue;
       }
       const opponent = opponentLabel(game, teamCode(team));
+      const tdCalibration = tdCalibrations.get(teamCode(team)) ?? null;
       loadLines(id, game.id)
         .then(({ lines }) => {
           if (lines.length === 0) return update(id, { status: "no-lines", opponent, gameId: game.id });
           const lastUpdatedAt = new Date(Math.max(...lines.map((line) => line.lastUpdatedAt.getTime())));
-          update(id, { status: "ready", stats: projectStatsFromLines(lines), opponent, gameId: game.id, lastUpdatedAt });
+          const stats = applyTdFactor(projectStatsFromLines(lines), tdCalibration?.factor ?? null);
+          update(id, { status: "ready", stats, opponent, gameId: game.id, lastUpdatedAt, tdCalibration });
         })
         .catch((error: unknown) =>
           update(id, { status: "error", message: error instanceof Error ? error.message : "Could not load lines." }),
@@ -147,7 +178,7 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
     };
     // rosterKey captures the roster's relevant contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [games, gameByTeam, rosterKey]);
+  }, [games, gameByTeam, tdCalibrations, rosterKey]);
 
   const projections = new Map<string, PlayerProjection>(
     roster.map(({ id }) => [id, gamesError ? { status: "error", message: gamesError } : (results.get(id) ?? { status: "loading" })]),
@@ -155,7 +186,7 @@ export function useRosterProjections(roster: { id: string; team: string }[]) {
   return {
     projections,
     gamesError,
-    isLoadingGames: games === null && gamesError === null,
+    isLoadingGames: (games === null || tdCalibrations === null) && gamesError === null,
     /** Games loaded, but none were returned or recognized for this week. */
     hasNoGames: games !== null && games.length === 0,
     /** Increments on each refetch; use as a key to reload anything showing cached lines. */

@@ -14,12 +14,31 @@ export type TeamStats = {
   sacks: number | null;
 };
 
+/**
+ * The team's TD scale, the same one project-players applies to its players: anytime-TD
+ * prices carry margin, so a team's players' TDs are scaled to what its game lines imply.
+ */
+export type TdCalibration = {
+  /** The team's implied score from spreads and totals; null without game lines. */
+  impliedPoints: number | null;
+  /** Its kicker's projected points; null without one. */
+  kickingPoints: number | null;
+  /** (impliedPoints − kickingPoints) / 6; null without both. */
+  impliedTds: number | null;
+  /** Its players' and D/ST's anytime TDs before scaling. */
+  projectedTds: number;
+  /** impliedTds / projectedTds, or the backend's fallback; multiply player TDs by it. */
+  factor: number;
+};
+
 export type TeamProjection = {
   /** Team ID (abbreviation), e.g. "KC". */
   team: string;
   matchup: string;
   opponent: string;
   stats: TeamStats;
+  /** Null when the API doesn't send it. */
+  tdCalibration: TdCalibration | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,6 +61,18 @@ function parseOpponent(matchup: string, team: string): string {
   return matchup;
 }
 
+function parseTdCalibration(value: unknown): TdCalibration | null {
+  if (!isRecord(value)) return null;
+  const impliedPoints = parseNullableStat(value.implied_points);
+  const kickingPoints = parseNullableStat(value.kicking_points);
+  const impliedTds = parseNullableStat(value.implied_tds);
+  const projectedTds = parseNullableStat(value.projected_tds);
+  const factor = parseNullableStat(value.factor);
+  if (impliedPoints === undefined || kickingPoints === undefined || impliedTds === undefined) return null;
+  if (projectedTds == null || factor == null || factor <= 0) return null;
+  return { impliedPoints, kickingPoints, impliedTds, projectedTds, factor };
+}
+
 function parseTeam(value: unknown): TeamProjection | undefined {
   if (!isRecord(value) || typeof value.team !== "string" || typeof value.matchup !== "string") return undefined;
   if (!isRecord(value.stats)) return undefined;
@@ -57,6 +88,7 @@ function parseTeam(value: unknown): TeamProjection | undefined {
     matchup: value.matchup,
     opponent: parseOpponent(value.matchup, value.team),
     stats: { touchdowns, pointsAllowed, yardsAllowed, interceptions, sacks },
+    tdCalibration: parseTdCalibration(value.td_calibration),
   };
 }
 

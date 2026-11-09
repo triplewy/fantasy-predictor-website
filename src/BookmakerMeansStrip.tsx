@@ -63,7 +63,10 @@ export function BookmakerMeansStrip({
   average,
   focusedBookmaker,
   onFocusBookmaker,
+  note,
 }: {
+  /** Extra caption text, e.g. how the values were scaled. */
+  note?: string;
   label: string;
   means: BookmakerMean[];
   excluded: string[];
@@ -111,10 +114,11 @@ export function BookmakerMeansStrip({
         <span title="Standard deviation of the bookmakers' expected values (sample, n − 1): how far books typically sit from the average.">
           std dev = <strong>{spread === null ? "—" : `±${formatValue(spread, average)}`}</strong>
         </span>
+        {note && <span> · {note}</span>}
         {excluded.length > 0 && (
           <span className="means-excluded">
             {" "}
-            · {excluded.join(", ")} not counted (fewer than 2 lines)
+            · {excluded.join(", ")} not counted (no usable curve)
           </span>
         )}
       </p>

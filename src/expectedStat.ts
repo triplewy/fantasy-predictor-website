@@ -4,11 +4,16 @@ import { statBaseMarkets } from "./markets";
 
 /**
  * Projections from raw bookmaker lines, ported from the backend's projection engine
- * (project-players) so the frontend reproduces its numbers exactly:
+ * (_shared/projection.ts, poisson.ts, odds.ts) so the frontend reproduces its numbers:
  *
- *   lines → per bookmaker, per stat: alternate lines + main O/U line, margin removed
- *         → expected stat (calcExpectedStatFromAlternate)
+ *   lines → only the bookmakers each stat is projected from (kicking: DraftKings)
+ *         → per bookmaker, per stat: alternate lines + main O/U line (TDs: anytime line)
+ *         → capped tail cut, margin removed, curve must reach the median
+ *         → expected stat (calcExpectedStatFromAlternate, or a Poisson fit of one line)
  *         → each stat averaged over the bookmakers that cover it.
+ *
+ * TDs are then scaled to the team's game lines (applyTdFactor) with the factor from
+ * project-teams, as project-players does.
  *
  * Ordering matters: when two lines map to the same threshold the later one wins, so lines
  * are kept in API order and merged in the same order as the backend.
@@ -16,9 +21,17 @@ import { statBaseMarkets } from "./markets";
 
 /** One line of one bookmaker's curve (backend MarketLine). */
 type MarketLine = { line: number; overPrice: number | null; underPrice: number | null };
+/** A curve line tagged with the market it came from (backend SourcedLine). */
+type SourcedLine = MarketLine & { market: string };
 /** market → (line key → line), in insertion order (backend Markets). */
 type Markets = Map<string, Map<string, MarketLine>>;
 type StatKey = keyof PlayerStats;
+
+/** Decimal odds to implied probability; 0.5 when unusable (backend decimalToImpliedProb). */
+function decimalToImpliedProb(decimalOdds: number): number {
+  if (!Number.isFinite(decimalOdds) || decimalOdds < 1) return 0.5;
+  return 1 / decimalOdds;
+}
 
 /**
  * Estimate a stat by summing implied probabilities from alternate Over odds (backend
@@ -31,7 +44,7 @@ export function calcExpectedStatFromAlternate(lines: MarketLine[]): number | nul
   const probabilitiesByThreshold = new Map<number, number>();
   for (const { line, overPrice } of lines) {
     if (overPrice === null) continue;
-    probabilitiesByThreshold.set(Math.floor(line) + 1, 1 / overPrice);
+    probabilitiesByThreshold.set(Math.floor(line) + 1, decimalToImpliedProb(overPrice));
   }
   if (probabilitiesByThreshold.size < 2) return null;
 
@@ -69,6 +82,41 @@ export function calcExpectedStatFromAlternate(lines: MarketLine[]): number | nul
   return expectedStat;
 }
 
+/** P(X <= k) for X ~ Poisson(lambda) (backend poissonCdf). */
+function poissonCdf(k: number, lambda: number): number {
+  let term = Math.exp(-lambda);
+  let total = term;
+  for (let i = 1; i <= k; i++) {
+    term *= lambda / i;
+    total += term;
+  }
+  return total;
+}
+
+/**
+ * The Poisson mean implied by one line (backend poissonMeanFromLine): P(X > line) = fair
+ * Over probability. Vig is removed when the Under price is known; otherwise the raw Over
+ * is used. A 0.5 line gives λ = -ln(P(under)); higher lines are solved by bisection.
+ */
+function poissonMeanFromLine(line: number, overPrice: number | null, underPrice: number | null): number | null {
+  if (!overPrice || overPrice <= 1 || !Number.isFinite(line) || line < 0) return null;
+  const over = 1 / overPrice;
+  const pOver = underPrice && underPrice > 1 ? over / (over + 1 / underPrice) : over;
+  if (pOver <= 0 || pOver >= 1) return null;
+  const pUnder = 1 - pOver;
+  const k = Math.floor(line);
+  if (k === 0) return -Math.log(pUnder);
+  let low = 0;
+  let high = k + 1;
+  while (poissonCdf(k, high) > pUnder) high *= 2;
+  for (let iteration = 0; iteration < 100; iteration++) {
+    const mid = (low + high) / 2;
+    if (poissonCdf(k, mid) > pUnder) low = mid;
+    else high = mid;
+  }
+  return (low + high) / 2;
+}
+
 /** Canonical line keys: 0.5 → "0.5", 1 → "1.0" (never array-index-like, so insertion order holds). */
 function lineKey(line: number): string {
   return Number.isInteger(line) ? line.toFixed(1) : String(line);
@@ -101,7 +149,7 @@ export function lineMargin(overPrice: number, underPrice: number): number {
  * the median margin of the curve's two-sided lines (never below 0). A curve with no Under
  * prices is returned unchanged, so it stays all raw rather than mixing raw and fair points.
  */
-export function removeVig(lines: MarketLine[]): MarketLine[] {
+export function removeVig<T extends MarketLine>(lines: T[]): T[] {
   const margins = lines
     .filter((line) => line.overPrice && line.underPrice)
     .map((line) => lineMargin(line.overPrice!, line.underPrice!))
@@ -117,33 +165,108 @@ export function removeVig(lines: MarketLine[]): MarketLine[] {
   });
 }
 
-/** Expected stat from one bookmaker's curve, after removing its margin. */
-function estimate(lines: MarketLine[]): number | null {
-  return calcExpectedStatFromAlternate(removeVig(lines));
+/** Smallest relative drop in Over probability a curve's top line needs over the line below it. */
+const minTailProbabilityDrop = 0.1;
+/** Only lines with an Over probability below this can be trimmed as a capped tail. */
+const maxCappedLineProbability = 0.2;
+
+/**
+ * Drops a capped tail (backend cutCappedTail): from the top, removes each long-shot line
+ * whose Over probability is less than 10% below the line under it — the book has hit its
+ * price cap. Returns the priced lines sorted by line.
+ */
+function cutCappedTail<T extends MarketLine>(lines: T[]): T[] {
+  const sorted = lines.filter((line) => line.overPrice).sort((a, b) => a.line - b.line);
+  let end = sorted.length;
+  while (end > 1) {
+    const [below, top] = [sorted[end - 2].overPrice!, sorted[end - 1].overPrice!];
+    const longShot = 1 / top < maxCappedLineProbability;
+    if (!longShot || below / top <= 1 - minTailProbabilityDrop) break;
+    end--;
+  }
+  return sorted.slice(0, end);
+}
+
+/** Lowest-line Over probability a curve needs to count (see coversMedian). */
+const minLowestLineProbability = 0.35;
+
+/**
+ * Whether a vig-free curve reaches the middle of the distribution (backend coversMedian):
+ * its lowest line must be under 1 or have a fair Over probability of at least 35%, since
+ * the estimator treats everything below the lowest line as certain.
+ */
+function coversMedian(fairLines: MarketLine[]): boolean {
+  const lowest = fairLines.reduce<MarketLine | undefined>(
+    (min, line) => (line.overPrice && (!min || line.line < min.line) ? line : min),
+    undefined,
+  );
+  if (!lowest) return false;
+  return lowest.line < 1 || 1 / lowest.overPrice! >= minLowestLineProbability;
+}
+
+/** Count stats whose single line may be fit to a Poisson; total TDs always use one (backend POISSON_STATS). */
+const poissonStats = new Set<StatKey>(["passingTouchdowns", "interceptions", "receptions"]);
+
+/**
+ * Stats projected only from these bookmakers (backend config stat_bookmakers): only
+ * DraftKings posts full kicking ladders.
+ */
+const statBookmakers: Partial<Record<StatKey, string[]>> = { kickingPoints: ["DraftKings"] };
+
+const marketBookmakers = new Map(
+  (Object.entries(statBookmakers) as [Exclude<StatKey, "touchdowns">, string[]][]).flatMap(([stat, bookmakers]) => {
+    const market = statBaseMarkets[stat];
+    return [
+      [market, bookmakers],
+      [`${market}_alternate`, bookmakers],
+    ] as const;
+  }),
+);
+
+/** Drops lines from bookmakers a stat isn't projected from (backend filterProjectionLines). */
+export function filterProjectionLines<T extends { bookmaker: string; market: string }>(rows: T[]): T[] {
+  return rows.filter((row) => marketBookmakers.get(row.market)?.includes(row.bookmaker) ?? true);
 }
 
 /** Lines of `marketKeys` merged in order; later markets win on the same line. */
-function mergeLines(markets: Markets, marketKeys: string[]): Map<string, MarketLine> {
-  const merged = new Map<string, MarketLine>();
-  for (const key of marketKeys) {
-    for (const [lineId, line] of markets.get(key) ?? []) merged.set(lineId, line);
+function mergeLines(markets: Markets, marketKeys: string[]): SourcedLine[] {
+  const merged = new Map<string, SourcedLine>();
+  for (const market of marketKeys) {
+    for (const [key, line] of markets.get(market) ?? []) merged.set(key, { ...line, market });
   }
-  return merged;
+  return [...merged.values()];
 }
 
-/** One bookmaker's expected value for one stat (null when it lacks enough lines). */
-function expectedStatForBookmaker(markets: Markets, stat: StatKey): number | null {
-  if (stat !== "touchdowns") {
-    const base = statBaseMarkets[stat];
-    // Alternate lines plus the main O/U line; the main line's price wins on the same line.
-    return estimate([...mergeLines(markets, [`${base}_alternate`, base]).values()]);
+/** One bookmaker's curve for one stat, before guards and vig removal (backend statCurves). */
+function statCurve(markets: Markets, stat: StatKey): { lines: SourcedLine[]; poissonFallback: boolean } {
+  if (stat === "touchdowns") {
+    // Total TDs: the anytime-TD line alone (P(TDs ≥ 1)), fit to a Poisson.
+    const anytime = mergeLines(markets, ["player_anytime_td"]).filter((line) => line.line === 0.5 && line.overPrice);
+    return { lines: anytime, poissonFallback: true };
   }
-  // Total touchdowns: player_tds_over plus player_anytime_td as the 0.5 line (anytime wins).
-  const tdLines = new Map(markets.get("player_tds_over") ?? []);
-  const anytime = markets.get("player_anytime_td")?.get("0.5");
-  if (anytime) tdLines.set("0.5", anytime);
-  // The 0.5 line (P(TDs ≥ 1)) is required; without it the estimator assumes a TD is certain.
-  return tdLines.get("0.5")?.overPrice == null ? null : estimate([...tdLines.values()]);
+  const base = statBaseMarkets[stat];
+  // Alternate lines plus the main O/U line; the main line's price wins on the same line.
+  return { lines: mergeLines(markets, [`${base}_alternate`, base]), poissonFallback: poissonStats.has(stat) };
+}
+
+/**
+ * One curve's estimate (backend estimateCurve): the capped tail cut, margin removed, and
+ * the curve must reach the median; failing that, a curve left with a single line may be
+ * fit to a Poisson. Null when the curve can't be estimated.
+ */
+function estimateCurve({ lines, poissonFallback }: { lines: SourcedLine[]; poissonFallback: boolean }): number | null {
+  const used = cutCappedTail(lines);
+  const fair = removeVig(used);
+  const usable = coversMedian(fair) ? calcExpectedStatFromAlternate(fair) : null;
+  if (usable !== null || !poissonFallback) return usable;
+  if (used.length !== 1) return null;
+  const [line] = used;
+  return poissonMeanFromLine(line.line, line.overPrice, line.underPrice);
+}
+
+/** One bookmaker's expected value for one stat (null when it can't be estimated). */
+function expectedStatForBookmaker(markets: Markets, stat: StatKey): number | null {
+  return estimateCurve(statCurve(markets, stat));
 }
 
 function groupByBookmaker(lines: PlayerLine[]): Map<string, PlayerLine[]> {
@@ -157,7 +280,7 @@ export type BookmakerMean = { bookmaker: string; mean: number };
 /**
  * Each bookmaker's expected value for one stat, from all of that bookmaker's lines.
  * Bookmakers with lines for the stat but no estimate are listed as excluded; `average`
- * is the projection (mean over bookmakers that produced one).
+ * is the projection before any TD scaling (mean over bookmakers that produced one).
  */
 export function bookmakerMeans(
   lines: PlayerLine[],
@@ -166,7 +289,7 @@ export function bookmakerMeans(
 ): { means: BookmakerMean[]; excluded: string[]; average: number | null } {
   const means: BookmakerMean[] = [];
   const excluded: string[] = [];
-  for (const [bookmaker, bookLines] of groupByBookmaker(lines)) {
+  for (const [bookmaker, bookLines] of groupByBookmaker(filterProjectionLines(lines))) {
     if (!bookLines.some((line) => statOfMarket(line.market) === stat)) continue;
     const mean = expectedStatForBookmaker(linesToMarkets(bookLines), stat);
     if (mean === null) excluded.push(bookmaker);
@@ -189,10 +312,11 @@ const statKeys: StatKey[] = [
 
 /**
  * Projected stat line from a player's raw lines (backend computeExpectedStats per
- * bookmaker, then averageExpectedStats). Stats no bookmaker can estimate are 0.
+ * bookmaker, then averageExpectedStats), before TD scaling. Stats no bookmaker can
+ * estimate are 0.
  */
 export function projectStatsFromLines(lines: PlayerLine[]): PlayerStats {
-  const perBookmaker = [...groupByBookmaker(lines).values()].map((bookLines) => {
+  const perBookmaker = [...groupByBookmaker(filterProjectionLines(lines)).values()].map((bookLines) => {
     const markets = linesToMarkets(bookLines);
     return statKeys.map((stat) => expectedStatForBookmaker(markets, stat));
   });
@@ -202,6 +326,18 @@ export function projectStatsFromLines(lines: PlayerLine[]): PlayerStats {
     stats[stat] = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
   });
   return stats;
+}
+
+/**
+ * Typical ratio of a team's projected TDs (from anytime prices, which carry margin) to
+ * the TDs its game lines imply; the backend's fallback when a team has no scale
+ * (config td_calibration_fallback_ratio).
+ */
+export const tdCalibrationFallbackRatio = 1.33;
+
+/** TDs scaled to the team's game lines (backend scaleTds): × the team's factor, or the fallback. */
+export function applyTdFactor(stats: PlayerStats, factor: number | null): PlayerStats {
+  return { ...stats, touchdowns: stats.touchdowns * (factor ?? 1 / tdCalibrationFallbackRatio) };
 }
 
 /**

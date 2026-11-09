@@ -267,11 +267,27 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
   }
 
   // Each bookmaker's expected value per stat, from the raw lines in API order (as the backend).
-  const meansByStat = new Map<StatKey, ReturnType<typeof bookmakerMeans>>();
+  const meansByStat = new Map<StatKey, ReturnType<typeof bookmakerMeans> & { tdScale: number | null }>();
   for (const stat of statOrder) {
     // Per bookmaker over all its lines (alternates + main O/U, margin removed), as the backend.
     const result = bookmakerMeans(data.lines, stat, (market) => marketInfo[market]?.stat);
-    if (result.means.length > 0 || result.excluded.length > 0) meansByStat.set(stat, result);
+    if (result.means.length > 0 || result.excluded.length > 0) meansByStat.set(stat, scaleTouchdownMeans(stat, result));
+  }
+
+  /**
+   * Anytime-TD prices carry margin, so projected TDs are scaled to the team's game lines
+   * (the factor from project-teams). Scale each book's TDs by the same ratio, so the strip's
+   * average is the projection shown above it.
+   */
+  function scaleTouchdownMeans(stat: StatKey, result: ReturnType<typeof bookmakerMeans>) {
+    if (stat !== "touchdowns" || !result.average || !(player.stats.touchdowns > 0)) return { ...result, tdScale: null };
+    const tdScale = player.stats.touchdowns / result.average;
+    return {
+      ...result,
+      means: result.means.map((item) => ({ ...item, mean: item.mean * tdScale })),
+      average: player.stats.touchdowns,
+      tdScale,
+    };
   }
 
   const allBookmakers = sortBookmakers(data.lines.map((line) => line.bookmaker));
@@ -415,6 +431,11 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
                     means={means.means}
                     excluded={means.excluded}
                     average={means.average}
+                    note={
+                      means.tdScale !== null && Math.abs(means.tdScale - 1) > 0.005
+                        ? `scaled ×${means.tdScale.toFixed(2)} to the team's game lines`
+                        : undefined
+                    }
                     focusedBookmaker={focusedBookmaker}
                     onFocusBookmaker={setFocusedBookmaker}
                   />
