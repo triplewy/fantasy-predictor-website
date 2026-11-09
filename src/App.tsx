@@ -14,7 +14,10 @@ import {
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
   getPointsBreakdown,
+  getTeamPointsBreakdown,
+  type TeamBreakdownItem,
   scoringPresets,
+  scoringSections,
   scoringSettingFields,
   type BreakdownItem,
   type ScoringFormat,
@@ -22,20 +25,40 @@ import {
   type ScoringSettings,
 } from "./scoring";
 import { getPlayerProjections, type Player, type Position, type ProjectionWeek } from "./api/rankings";
+import { getTeamProjections, type TeamProjection } from "./api/teams";
 
-const positions: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K"];
+const positions: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K", "DST"];
+
+function positionLabel(item: PositionFilter) {
+  return item === "ALL" ? "All" : item === "DST" ? "D/ST" : item;
+}
 const excludedPositions: ("ALL" | Position)[] = ["ALL", "QB", "RB", "WR", "TE", "K"];
 
 type RankedPlayer = Player & { rank: number; points: number; breakdown: BreakdownItem[] };
+type RankedTeam = TeamProjection & { rank: number; points: number; breakdown: TeamBreakdownItem[] };
 
+/**
+ * The NFL week the page queries ([from, to), Tuesday 4 AM Eastern to the next), shown as
+ * its Tuesday–Monday dates in Eastern: "Nov 3 – 9", or "Oct 27 – Nov 2" across months.
+ */
+function formatQueriedWeek({ from, to }: { from: Date; to: Date }) {
+  const parts = (date: Date) =>
+    Object.fromEntries(
+      new Intl.DateTimeFormat(undefined, { timeZone: "America/New_York", month: "short", day: "numeric" })
+        .formatToParts(date)
+        .map((part) => [part.type, part.value]),
+    );
+  const start = parts(from);
+  const end = parts(new Date(to.getTime() - 86_400_000)); // last day: Monday
+  return start.month === end.month
+    ? `${start.month} ${start.day} – ${end.day}`
+    : `${start.month} ${start.day} – ${end.month} ${end.day}`;
+}
+
+/** Game count and last update, from the projections response. */
 function formatWeek(week: ProjectionWeek | null, updatedAt: Date | null) {
-  const format = (date: Date) =>
-    date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const parts: string[] = [];
-  if (week) {
-    parts.push(`Week of ${format(week.start)} – ${format(week.end)}`);
-    if (week.games > 0) parts.push(`${week.games} games`);
-  }
+  if (week && week.games > 0) parts.push(`${week.games} games`);
   if (updatedAt) parts.push(`Updated ${formatUpdatedAt(updatedAt)}`);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
@@ -110,12 +133,19 @@ function isScoringFormat(value: unknown): value is ScoringFormat {
   return value === "PPR" || value === "Half PPR" || value === "Standard" || value === "Custom";
 }
 
-function isScoringSettings(value: unknown): value is ScoringSettings {
-  if (typeof value !== "object" || value === null) return false;
-  const settings = value as Record<string, unknown>;
-  return scoringSettingFields.every(
-    ({ key }) => typeof settings[key] === "number" && Number.isFinite(settings[key]),
-  );
+/**
+ * Saved settings with any missing or invalid values (e.g. settings saved before the D/ST
+ * fields existed) filled from the format's preset; PPR for Custom. Null if not an object.
+ */
+function completeScoringSettings(value: unknown, format: ScoringFormat): ScoringSettings | null {
+  if (typeof value !== "object" || value === null) return null;
+  const saved = value as Record<string, unknown>;
+  const settings: ScoringSettings = { ...scoringPresets[format === "Custom" ? "PPR" : format] };
+  for (const { key } of scoringSettingFields) {
+    const item = saved[key];
+    if (typeof item === "number" && Number.isFinite(item)) settings[key] = item;
+  }
+  return settings;
 }
 
 function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSettings } {
@@ -124,15 +154,9 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
     const stored: unknown =
       readStorageJson(scoringStorageKey) ?? (cookie ? JSON.parse(cookie) : null);
     if (stored === null) return { format: "PPR", settings: { ...scoringPresets.PPR } };
-    if (
-      typeof stored === "object" &&
-      stored !== null &&
-      "format" in stored &&
-      isScoringFormat(stored.format) &&
-      "settings" in stored &&
-      isScoringSettings(stored.settings)
-    ) {
-      return { format: stored.format, settings: stored.settings };
+    if (typeof stored === "object" && stored !== null && "format" in stored && isScoringFormat(stored.format)) {
+      const settings = completeScoringSettings("settings" in stored ? stored.settings : null, stored.format);
+      if (settings) return { format: stored.format, settings };
     }
     console.warn("Saved fantasy scoring preferences are invalid; using PPR defaults.");
   } catch (error) {
@@ -174,6 +198,8 @@ function App() {
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [page, setPage] = useState<Page>(currentPage);
   const session = useSession();
+  // The week both projection requests ask for (from/to); shown in the heading.
+  const [queriedWeek] = useState(currentNflWeek);
 
   // Hash routing (see routes.ts): follow tab clicks, back/forward and redirects.
   useEffect(() => {
@@ -201,7 +227,7 @@ function App() {
     if (!hasRequestedProjections) return;
     const controller = new AbortController();
 
-    getPlayerProjections(currentNflWeek(), controller.signal)
+    getPlayerProjections(queriedWeek, controller.signal)
       .then(({ players: loadedPlayers, week, updatedAt }) => {
         setPlayers(loadedPlayers);
         setProjectionWeek(week);
@@ -219,6 +245,31 @@ function App() {
 
     return () => controller.abort();
   }, [hasRequestedProjections]);
+
+  // D/ST projections (project-teams) are fetched the first time the D/ST tab is shown.
+  const isTeamTab = page === "rankings" && position === "DST";
+  const [teams, setTeams] = useState<TeamProjection[]>([]);
+  const [hasRequestedTeams, setHasRequestedTeams] = useState(false);
+  const [isLoadingTeams, setIsLoadingTeams] = useState(true);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+  useEffect(() => {
+    if (isTeamTab) setHasRequestedTeams(true);
+  }, [isTeamTab]);
+
+  useEffect(() => {
+    if (!hasRequestedTeams) return;
+    const controller = new AbortController();
+    getTeamProjections(queriedWeek, controller.signal)
+      .then(setTeams)
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setTeamsError(error instanceof Error ? error.message : "Could not load D/ST projections.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingTeams(false);
+      });
+    return () => controller.abort();
+  }, [hasRequestedTeams]);
 
   // Fill in details for exclusions saved by older versions (cookie IDs or names only).
   useEffect(() => {
@@ -307,6 +358,34 @@ function App() {
       );
   }, [scoredPlayers, position, search]);
 
+  const filteredTeams = useMemo<RankedTeam[]>(() => {
+    const query = search.trim().toLowerCase();
+    return teams
+      .map((team) => {
+        const breakdown = getTeamPointsBreakdown(team.stats, settings);
+        return { ...team, breakdown, points: breakdown.reduce((total, item) => total + item.points, 0) };
+      })
+      .sort((a, b) => b.points - a.points)
+      .map((team, index) => ({ ...team, rank: index + 1 }))
+      .filter((team) => `${team.team} ${team.opponent}`.toLowerCase().includes(query));
+  }, [teams, settings, search]);
+
+  const renderSettingField = ({ key, label, unit, step }: (typeof scoringSettingFields)[number]) => (
+    <label className="setting-field" key={key}>
+      <span>{label}</span>
+      <span className="setting-input-wrap">
+        <input
+          type="number"
+          step={step ?? 0.5}
+          value={settings[key]}
+          aria-label={label}
+          onChange={(event) => updateScoringSetting(key, event.currentTarget.value)}
+        />
+        <span>{unit}</span>
+      </span>
+    </label>
+  );
+
   const scoringControl = (
     <div className="scoring-dropdown">
       <button
@@ -352,24 +431,15 @@ function App() {
               ))}
             </div>
           </div>
-          <div className="settings-grid">
-            {scoringSettingFields.map(({ key, label, unit, step }) => (
-              <label className="setting-field" key={key}>
-                <span>{label}</span>
-                <span className="setting-input-wrap">
-                  <input
-                    type="number"
-                    step={step ?? 0.5}
-                    value={settings[key]}
-                    aria-label={label}
-                    onChange={(event) => updateScoringSetting(key, event.currentTarget.value)}
-                  />
-                  <span>{unit}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-          <p className="settings-note">Custom scoring settings are saved for this page. Projected points are calculated from these settings. Kicker projections arrive pre-scored, so field goal and fumble values don't change them.</p>
+          {scoringSections.map(({ section, title, defaultOpen }) => (
+            <details className="settings-section" key={section} open={defaultOpen}>
+              <summary>{title}</summary>
+              <div className="settings-grid">
+                {scoringSettingFields.filter((field) => field.section === section).map(renderSettingField)}
+              </div>
+            </details>
+          ))}
+          <p className="settings-note">Custom scoring settings are saved for this page. Projected points are calculated from these settings. Kicker projections arrive pre-scored, so field goal and fumble values don't change them. D/ST projections cover only touchdowns (scored at the average return-TD value), sacks, interceptions, and points and yards allowed (each tiered on the rounded expected value); the other D/ST settings don't change projections yet.</p>
         </div>
       )}
     </div>
@@ -408,7 +478,10 @@ function App() {
         <section className="player-list" aria-label="Player rankings">
           <div className="list-heading">
             <div>
-              <h2>All players</h2>
+              <h2>
+                {isTeamTab ? "D/ST" : "All players"}
+                <span className="heading-week"> · Week of {formatQueriedWeek(queriedWeek)}</span>
+              </h2>
               <p>{formatWeek(projectionWeek, projectionsUpdatedAt) ?? "Weekly point projections"}</p>
             </div>
             <label className="search">
@@ -417,14 +490,15 @@ function App() {
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Player or team"
-                aria-label="Search by player or team"
+                placeholder={isTeamTab ? "Team" : "Player or team"}
+                aria-label={isTeamTab ? "Search by team" : "Search by player or team"}
               />
             </label>
           </div>
 
           {scoringControl}
 
+          {!isTeamTab && (
           <div className="scoring-dropdown excluded-dropdown">
             <button
               type="button"
@@ -511,6 +585,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
 
           <div className="list-controls">
             <div className="position-filters" aria-label="Filter by position">
@@ -522,15 +597,67 @@ function App() {
                   aria-pressed={position === item}
                   onClick={() => setPosition(item)}
                 >
-                  {item === "ALL" ? "All" : item}
+                  {positionLabel(item)}
                 </button>
               ))}
               <span className="player-count">
-                {isLoadingPlayers ? "Loading players..." : `${filteredPlayers.length} players`}
+                {isTeamTab
+                  ? isLoadingTeams
+                    ? "Loading teams..."
+                    : `${filteredTeams.length} teams`
+                  : isLoadingPlayers
+                    ? "Loading players..."
+                    : `${filteredPlayers.length} players`}
               </span>
             </div>
           </div>
 
+          {isTeamTab ? (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Rank</th>
+                    <th scope="col">Team</th>
+                    <th scope="col">Opponent</th>
+                    <th scope="col" className="points-heading">Projected points</th>
+                    <th scope="col">Breakdown</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTeams.map((team) => (
+                    <tr key={`${team.team} ${team.matchup}`}>
+                      <td className="rank">{team.rank}</td>
+                      <td className="name">{team.team} D/ST</td>
+                      <td>{team.opponent}</td>
+                      <td className="points">{team.points.toFixed(1)}</td>
+                      <td className="breakdown">
+                        {team.breakdown.length === 0 ? (
+                          <span className="breakdown-empty">No projected stats</span>
+                        ) : (
+                          <ul className="breakdown-list">
+                            {team.breakdown.map((item) => (
+                              <li key={item.key}>
+                                <span>{item.label}</span>
+                                <span className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}>
+                                  {formatPoints(item.points)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {isLoadingTeams && <p className="empty-state" role="status">Loading D/ST projections...</p>}
+              {teamsError && <p className="empty-state error-state" role="alert">{teamsError}</p>}
+              {!isLoadingTeams && !teamsError && filteredTeams.length === 0 && (
+                <p className="empty-state">{teams.length === 0 ? "No D/ST projections this week." : "No teams match your search."}</p>
+              )}
+            </div>
+          ) : (
           <div className="table-scroll">
             <table>
               <thead>
@@ -628,13 +755,9 @@ function App() {
               <p className="empty-state">No players match your search.</p>
             )}
           </div>
+          )}
         </section>
       )}
-      <footer>
-        {page === "lineup"
-          ? "Projections are calculated in your browser from each player's raw bookmaker lines and scored with your settings."
-          : "Projected stats are provided by the server; points and ranks are calculated from your scoring settings."}
-      </footer>
     </main>
   );
 }

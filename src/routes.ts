@@ -2,11 +2,11 @@
  * Hash routing. The part after "#" never reaches the server, so every URL loads index.html
  * and works on GitHub Pages (refresh, bookmarks, shared links) without server rewrites.
  *   #/rankings              Rankings, all positions
- *   #/rankings/qb … /flex   Rankings filtered to a position tab
+ *   #/rankings/qb … /dst    Rankings filtered to a position tab (dst = D/ST)
  *   #/lineup-optimizer      Lineup optimizer
  */
 export type Page = "rankings" | "lineup";
-export type PositionFilter = "ALL" | "QB" | "RB" | "WR" | "TE" | "FLEX" | "K";
+export type PositionFilter = "ALL" | "QB" | "RB" | "WR" | "TE" | "FLEX" | "K" | "DST";
 
 const positionSlugs: Record<PositionFilter, string> = {
   ALL: "",
@@ -16,6 +16,7 @@ const positionSlugs: Record<PositionFilter, string> = {
   TE: "te",
   FLEX: "flex",
   K: "k",
+  DST: "dst",
 };
 
 const pageHashes: Record<Page, string> = {

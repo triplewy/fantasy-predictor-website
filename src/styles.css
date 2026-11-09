@@ -124,6 +124,11 @@ h1 {
   font-weight: 600;
 }
 
+.heading-week {
+  color: #7a827d;
+  font-weight: 500;
+}
+
 .list-heading p {
   margin: 5px 0 0;
   color: #7a827d;
@@ -259,6 +264,23 @@ h1 {
   color: #303a33;
   font-size: 12px;
   text-align: right;
+}
+
+.settings-section {
+  padding-bottom: 12px;
+  border-top: 1px solid #edf0ed;
+}
+
+.settings-section summary {
+  padding-top: 12px;
+  color: #303a33;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-section .settings-grid {
+  padding-bottom: 4px;
 }
 
 .settings-note {
@@ -1520,12 +1542,6 @@ tbody .lines-row:hover {
 
 .error-state {
   color: #9c2929;
-}
-
-footer {
-  padding-top: 14px;
-  color: #858d87;
-  font-size: 12px;
 }
 
 @media (max-width: 560px) {
