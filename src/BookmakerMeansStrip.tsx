@@ -64,7 +64,16 @@ export function BookmakerMeansStrip({
   focusedBookmaker,
   onFocusBookmaker,
   note,
+  valueLabel = "Expected value",
+  showAverage = true,
 }: {
+  /**
+   * False when each dot is a book's median (yardage): only the average of the medians (the
+   * projection) is shown, as "avg median", with no median-of-medians or std dev.
+   */
+  showAverage?: boolean;
+  /** What each dot is: "Expected value" (a curve's mean) or "Median" (yardage). */
+  valueLabel?: string;
   /** Extra caption text, e.g. how the values were scaled. */
   note?: string;
   label: string;
@@ -79,7 +88,7 @@ export function BookmakerMeansStrip({
 
   const medianValue = median(means.map((item) => item.mean));
   const spread = standardDeviation(means.map((item) => item.mean));
-  const values = [...means.map((item) => item.mean), average, medianValue];
+  const values = [...means.map((item) => item.mean), average, ...(showAverage ? [medianValue] : [])];
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = (max - min) * 0.08 || Math.max(Math.abs(average) * 0.05, 0.1);
@@ -93,7 +102,9 @@ export function BookmakerMeansStrip({
   const ticks = niceTicks(domain[0], domain[1], Math.max(2, Math.floor(plotWidth / 70)));
   const averageX = x(average);
   const medianX = x(medianValue);
-  const anchors = markerAnchors(averageX, medianX, width);
+  const anchors = showAverage
+    ? markerAnchors(averageX, medianX, width)
+    : { average: markerAnchors(averageX, averageX + 90, width).average, median: "middle" as const };
   // Nudge labels off their line when pushed apart, so text doesn't sit on the line.
   const labelX = (markerX: number, anchor: "start" | "middle" | "end") =>
     anchor === "start" ? markerX + 3 : anchor === "end" ? markerX - 3 : markerX;
@@ -108,12 +119,20 @@ export function BookmakerMeansStrip({
   return (
     <div className="means-strip" ref={containerRef}>
       <p className="means-caption">
-        Expected value by bookmaker · average of {means.length} = <strong>{formatValue(average)}</strong>
-        {" "}· median = <strong>{formatValue(medianValue, average)}</strong>
-        {" "}·{" "}
-        <span title="Standard deviation of the bookmakers' expected values (sample, n − 1): how far books typically sit from the average.">
-          std dev = <strong>{spread === null ? "—" : `±${formatValue(spread, average)}`}</strong>
-        </span>
+        {showAverage ? (
+          <>
+            {valueLabel} by bookmaker · average of {means.length} = <strong>{formatValue(average)}</strong>
+            {" "}· median = <strong>{formatValue(medianValue, average)}</strong>
+            {" "}·{" "}
+            <span title="Standard deviation of the bookmakers' expected values (sample, n − 1): how far books typically sit from the average.">
+              std dev = <strong>{spread === null ? "—" : `±${formatValue(spread, average)}`}</strong>
+            </span>
+          </>
+        ) : (
+          <>
+            {valueLabel} by bookmaker · avg median of {means.length} = <strong>{formatValue(average)}</strong>
+          </>
+        )}
         {note && <span> · {note}</span>}
         {excluded.length > 0 && (
           <span className="means-excluded">
@@ -127,11 +146,15 @@ export function BookmakerMeansStrip({
           width={width}
           height={height}
           role="img"
-          aria-label={`${label}: expected value by bookmaker. ${[...means]
+          aria-label={`${label}: ${valueLabel.toLowerCase()} by bookmaker. ${[...means]
             .sort((a, b) => a.mean - b.mean)
             .map((item) => `${item.bookmaker} ${formatValue(item.mean, average)}`)
-            .join(", ")}. Average ${formatValue(average)}, median ${formatValue(medianValue, average)}${
-            spread === null ? "" : `, standard deviation ${formatValue(spread, average)}`
+            .join(", ")}. ${
+            showAverage
+              ? `Average ${formatValue(average)}, median ${formatValue(medianValue, average)}${
+                  spread === null ? "" : `, standard deviation ${formatValue(spread, average)}`
+                }`
+              : `Average median ${formatValue(average)}`
           }.`}
         >
           <line className="prob-axis" x1={margin.left} x2={margin.left + plotWidth} y1={axisY} y2={axisY} />
@@ -141,15 +164,19 @@ export function BookmakerMeansStrip({
             </text>
           ))}
 
-          <line className="means-median" x1={medianX} x2={medianX} y1={margin.top - 4} y2={axisY} />
-          <text
-            className="means-median-label"
-            x={labelX(medianX, anchors.median)}
-            y={margin.top - 8}
-            textAnchor={anchors.median}
-          >
-            Med {formatValue(medianValue, average)}
-          </text>
+          {showAverage && (
+            <>
+              <line className="means-median" x1={medianX} x2={medianX} y1={margin.top - 4} y2={axisY} />
+              <text
+                className="means-median-label"
+                x={labelX(medianX, anchors.median)}
+                y={margin.top - 8}
+                textAnchor={anchors.median}
+              >
+                Med {formatValue(medianValue, average)}
+              </text>
+            </>
+          )}
 
           <line className="prob-projection" x1={averageX} x2={averageX} y1={margin.top - 4} y2={axisY} />
           <text
@@ -158,7 +185,7 @@ export function BookmakerMeansStrip({
             y={margin.top - 8}
             textAnchor={anchors.average}
           >
-            Avg {formatValue(average)}
+            {showAverage ? "Avg" : "Avg med"} {formatValue(average)}
           </text>
 
           {ordered.map((item) => {
@@ -199,17 +226,19 @@ export function BookmakerMeansStrip({
             {active.bookmaker}
           </p>
           <p className="prob-tooltip-focus">
-            <span>Expected</span>
+            <span>{showAverage ? "Expected" : valueLabel}</span>
             <span>{formatValue(active.mean, average)}</span>
           </p>
           <p className="prob-tooltip-focus">
-            <span>vs average</span>
+            <span>{showAverage ? "vs average" : "vs avg median"}</span>
             <span>{formatDiff(active.mean - average, average)}</span>
           </p>
-          <p className="prob-tooltip-focus">
-            <span>vs median</span>
-            <span>{formatDiff(active.mean - medianValue, average)}</span>
-          </p>
+          {showAverage && (
+            <p className="prob-tooltip-focus">
+              <span>vs median</span>
+              <span>{formatDiff(active.mean - medianValue, average)}</span>
+            </p>
+          )}
         </div>
       )}
     </div>

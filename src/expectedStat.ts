@@ -8,8 +8,9 @@ import { statBaseMarkets } from "./markets";
  *
  *   lines → only the bookmakers each stat is projected from (kicking: DraftKings)
  *         → per bookmaker, per stat: alternate lines + main O/U line (TDs: anytime line)
- *         → capped tail cut, margin removed, curve must reach the median
- *         → expected stat (calcExpectedStatFromAlternate, or a Poisson fit of one line)
+ *         → yardage: margin removed → the curve's median (where the Over crosses 50%)
+ *         → other stats: capped tail cut, margin removed, curve must reach the median
+ *           → the curve's mean (calcExpectedStatFromAlternate, or a Poisson fit of one line)
  *         → each stat averaged over the bookmakers that cover it.
  *
  * TDs are then scaled to the team's game lines (applyTdFactor) with the factor from
@@ -204,6 +205,35 @@ function coversMedian(fairLines: MarketLine[]): boolean {
   return lowest.line < 1 || 1 / lowest.overPrice! >= minLowestLineProbability;
 }
 
+/**
+ * Yardage stats, projected by each bookmaker's median rather than its mean (backend
+ * MEDIAN_STATS): yardage has a long right tail where prices are least reliable, and the
+ * median depends only on the lines near 50%, so these curves skip the mean's guards.
+ */
+const medianStats = new Set<StatKey>(["passingYards", "rushingYards", "receivingYards"]);
+
+/**
+ * Median of a vig-free curve (backend curveMedian): where the Over probability crosses
+ * 50%, by a straight line between the two lines either side of it. Null unless the curve
+ * has lines on both sides of 50%.
+ */
+function curveMedian(fairLines: MarketLine[]): number | null {
+  const points = fairLines
+    .filter((line) => line.overPrice && line.overPrice > 1)
+    .map((line) => ({ line: line.line, p: 1 / line.overPrice! }))
+    .sort((a, b) => a.line - b.line);
+  // Over probabilities can't rise with the line; smooth out book noise.
+  for (let index = 1; index < points.length; index++) points[index].p = Math.min(points[index].p, points[index - 1].p);
+  for (let index = 1; index < points.length; index++) {
+    const [below, above] = [points[index - 1], points[index]];
+    if (below.p >= 0.5 && above.p <= 0.5) {
+      if (below.p === above.p) return below.line;
+      return below.line + ((below.p - 0.5) / (below.p - above.p)) * (above.line - below.line);
+    }
+  }
+  return null;
+}
+
 /** Count stats whose single line may be fit to a Poisson; total TDs always use one (backend POISSON_STATS). */
 const poissonStats = new Set<StatKey>(["passingTouchdowns", "interceptions", "receptions"]);
 
@@ -238,30 +268,53 @@ function mergeLines(markets: Markets, marketKeys: string[]): SourcedLine[] {
 }
 
 /** One bookmaker's curve for one stat, before guards and vig removal (backend statCurves). */
-function statCurve(markets: Markets, stat: StatKey): { lines: SourcedLine[]; poissonFallback: boolean } {
+type StatCurve = { lines: SourcedLine[]; poissonFallback: boolean; median: boolean };
+
+function statCurve(markets: Markets, stat: StatKey): StatCurve {
   if (stat === "touchdowns") {
     // Total TDs: the anytime-TD line alone (P(TDs ≥ 1)), fit to a Poisson.
     const anytime = mergeLines(markets, ["player_anytime_td"]).filter((line) => line.line === 0.5 && line.overPrice);
-    return { lines: anytime, poissonFallback: true };
+    return { lines: anytime, poissonFallback: true, median: false };
   }
   const base = statBaseMarkets[stat];
   // Alternate lines plus the main O/U line; the main line's price wins on the same line.
-  return { lines: mergeLines(markets, [`${base}_alternate`, base]), poissonFallback: poissonStats.has(stat) };
+  return {
+    lines: mergeLines(markets, [`${base}_alternate`, base]),
+    poissonFallback: poissonStats.has(stat),
+    median: medianStats.has(stat),
+  };
 }
 
 /**
- * One curve's estimate (backend estimateCurve): the capped tail cut, margin removed, and
- * the curve must reach the median; failing that, a curve left with a single line may be
- * fit to a Poisson. Null when the curve can't be estimated.
+ * A curve's estimate from two or more lines, margin removed (backend usableCurve). With
+ * `median`, the curve's median over every line. Otherwise its mean, after cutting a capped
+ * tail and skipping curves that don't reach the median. Null with fewer than two lines.
  */
-function estimateCurve({ lines, poissonFallback }: { lines: SourcedLine[]; poissonFallback: boolean }): number | null {
+function usableCurve(lines: SourcedLine[], median: boolean): number | null {
+  if (median) return lines.length >= 2 ? curveMedian(removeVig(lines)) : null;
   const used = cutCappedTail(lines);
+  if (used.length < 2) return null;
   const fair = removeVig(used);
-  const usable = coversMedian(fair) ? calcExpectedStatFromAlternate(fair) : null;
+  return coversMedian(fair) ? calcExpectedStatFromAlternate(fair) : null;
+}
+
+/**
+ * One curve's estimate (backend estimateCurve): usableCurve, or else, for a curve left
+ * with a single line (after trimming a capped tail) that allows it, a Poisson fit of
+ * that line. Null when the curve can't be estimated.
+ */
+function estimateCurve({ lines, poissonFallback, median }: StatCurve): number | null {
+  const usable = usableCurve(lines, median);
   if (usable !== null || !poissonFallback) return usable;
-  if (used.length !== 1) return null;
-  const [line] = used;
+  const trimmed = cutCappedTail(lines);
+  if (trimmed.length !== 1) return null;
+  const [line] = trimmed;
   return poissonMeanFromLine(line.line, line.overPrice, line.underPrice);
+}
+
+/** Whether a stat is projected by each bookmaker's median (yardage) rather than its mean. */
+export function isMedianStat(stat: StatKey): boolean {
+  return medianStats.has(stat);
 }
 
 /** One bookmaker's expected value for one stat (null when it can't be estimated). */

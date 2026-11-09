@@ -4,7 +4,7 @@ import type { PlayerStats } from "./api/rankings";
 import { ImpliedProbabilityChart } from "./ImpliedProbabilityChart";
 import { bookmakerColor, sortBookmakers } from "./bookmakerColors";
 import { BookmakerMeansStrip } from "./BookmakerMeansStrip";
-import { bookmakerMeans, bookmakerVig, removeVigFromCurve } from "./expectedStat";
+import { bookmakerMeans, bookmakerVig, isMedianStat, removeVigFromCurve } from "./expectedStat";
 import { marketInfo, statBaseMarkets } from "./markets";
 
 type StatKey = keyof PlayerStats;
@@ -431,6 +431,8 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
                     means={means.means}
                     excluded={means.excluded}
                     average={means.average}
+                    valueLabel={isMedianStat(section) ? "Median" : "Expected value"}
+                    showAverage={!isMedianStat(section)}
                     note={
                       means.tdScale !== null && Math.abs(means.tdScale - 1) > 0.005
                         ? `scaled ×${means.tdScale.toFixed(2)} to the team's game lines`
