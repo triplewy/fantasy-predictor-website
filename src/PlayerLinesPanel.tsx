@@ -3,8 +3,8 @@ import { cachedPlayerLines, loadPlayerLines, type PlayerLine, type PlayerLines }
 import type { PlayerStats } from "./api/rankings";
 import { ImpliedProbabilityChart } from "./ImpliedProbabilityChart";
 import { bookmakerColor, sortBookmakers } from "./bookmakerColors";
-import { BookmakerMeansStrip } from "./BookmakerMeansStrip";
-import { bookmakerMeans, bookmakerVig, isMedianStat, removeVigFromCurve } from "./expectedStat";
+import { BookmakerMeansStrip, type BookmakerMean } from "./BookmakerMeansStrip";
+import { bookmakerVig, removeVigFromCurve } from "./vig";
 import { marketInfo, statBaseMarkets } from "./markets";
 
 type StatKey = keyof PlayerStats;
@@ -30,6 +30,9 @@ const statLabels: Record<StatKey, string> = {
 };
 
 const statOrder = Object.keys(statLabels) as StatKey[];
+
+/** Yardage is projected by each bookmaker's median (the backend's MEDIAN_STATS), other stats by the mean. */
+const medianStats = new Set<StatKey>(["passingYards", "rushingYards", "receivingYards"]);
 
 /**
  * An anytime TD bet is the same as over 0.5 total TDs, so it becomes the 0.5 line of the
@@ -266,28 +269,19 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
     sections.set(section, markets);
   }
 
-  // Each bookmaker's expected value per stat, from the raw lines in API order (as the backend).
-  const meansByStat = new Map<StatKey, ReturnType<typeof bookmakerMeans> & { tdScale: number | null }>();
+  // Each bookmaker's projection per stat, from the backend (TDs already scaled to the team's
+  // game lines). Books with lines for a stat but no projection are listed as not counted.
+  const meansByStat = new Map<StatKey, { means: BookmakerMean[]; excluded: string[]; average: number | null }>();
   for (const stat of statOrder) {
-    // Per bookmaker over all its lines (alternates + main O/U, margin removed), as the backend.
-    const result = bookmakerMeans(data.lines, stat, (market) => marketInfo[market]?.stat);
-    if (result.means.length > 0 || result.excluded.length > 0) meansByStat.set(stat, scaleTouchdownMeans(stat, result));
-  }
-
-  /**
-   * Anytime-TD prices carry margin, so projected TDs are scaled to the team's game lines
-   * (the factor from project-teams). Scale each book's TDs by the same ratio, so the strip's
-   * average is the projection shown above it.
-   */
-  function scaleTouchdownMeans(stat: StatKey, result: ReturnType<typeof bookmakerMeans>) {
-    if (stat !== "touchdowns" || !result.average || !(player.stats.touchdowns > 0)) return { ...result, tdScale: null };
-    const tdScale = player.stats.touchdowns / result.average;
-    return {
-      ...result,
-      means: result.means.map((item) => ({ ...item, mean: item.mean * tdScale })),
-      average: player.stats.touchdowns,
-      tdScale,
-    };
+    const means = data.bookmakerStats.flatMap(({ bookmaker, stats }) =>
+      stats[stat] === undefined ? [] : [{ bookmaker, mean: stats[stat] }],
+    );
+    const counted = new Set(means.map((item) => item.bookmaker));
+    const excluded = sortBookmakers(
+      data.lines.filter((line) => marketInfo[line.market]?.stat === stat).map((line) => line.bookmaker),
+    ).filter((bookmaker) => !counted.has(bookmaker));
+    const average = means.length > 0 ? means.reduce((total, item) => total + item.mean, 0) / means.length : null;
+    if (means.length > 0 || excluded.length > 0) meansByStat.set(stat, { means, excluded, average });
   }
 
   const allBookmakers = sortBookmakers(data.lines.map((line) => line.bookmaker));
@@ -431,13 +425,8 @@ export function PlayerLinesPanel({ player }: { player: PanelPlayer }) {
                     means={means.means}
                     excluded={means.excluded}
                     average={means.average}
-                    valueLabel={isMedianStat(section) ? "Median" : "Expected value"}
-                    showAverage={!isMedianStat(section)}
-                    note={
-                      means.tdScale !== null && Math.abs(means.tdScale - 1) > 0.005
-                        ? `scaled ×${means.tdScale.toFixed(2)} to the team's game lines`
-                        : undefined
-                    }
+                    valueLabel={medianStats.has(section) ? "Median" : "Expected value"}
+                    showAverage={!medianStats.has(section)}
                     focusedBookmaker={focusedBookmaker}
                     onFocusBookmaker={setFocusedBookmaker}
                   />

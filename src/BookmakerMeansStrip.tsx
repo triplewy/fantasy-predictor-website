@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { bookmakerColor } from "./bookmakerColors";
-import type { BookmakerMean } from "./expectedStat";
 import { niceTicks, useWidth } from "./ImpliedProbabilityChart";
+
+/** One bookmaker's value for one stat (its projection from its own lines). */
+export type BookmakerMean = { bookmaker: string; mean: number };
 
 const margin = { top: 22, right: 16, bottom: 26, left: 16 };
 /** Space between the "Avg" label and the axis, which the dots sit on. */

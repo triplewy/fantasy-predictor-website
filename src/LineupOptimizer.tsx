@@ -236,7 +236,7 @@ export function LineupOptimizer({
       .slice(0, 8);
   }, [playerList, query, rosterIds]);
 
-  // Points come from each player's projected stats (computed from their raw lines) under
+  // Points come from each player's projected stats (from player-lines) under
   // the current scoring. Players without a projection count as 0 until one arrives.
   const rosterWithPoints: RosterPlayer[] = rosterWithTeams.map((saved) => {
     const projection = projections.get(saved.id) ?? { status: "loading" as const };
@@ -713,8 +713,7 @@ export function LineupOptimizer({
         )}
         {rosterWithPoints.some((player) => !player.hasProjection && !player.note?.startsWith("Loading")) && (
           <p className="lineup-note">
-            Players without a projection (no game this week, or no bookmaker lines yet) count as 0. Projections
-            are calculated from each player's raw bookmaker lines.
+            Players without a projection (no game this week, or no bookmaker lines yet) count as 0.
           </p>
         )}
       </div>

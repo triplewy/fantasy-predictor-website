@@ -167,7 +167,7 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
 }
 
 const pageTabs: { page: Page; title: string }[] = [
-  { page: "rankings", title: "Rankings" },
+  { page: "rankings", title: "Weekly rankings" },
   { page: "lineup", title: "Lineup optimizer" },
 ];
 
@@ -217,7 +217,7 @@ function App() {
   }
 
   // Projections only power the Rankings page, so they're fetched the first time it's shown;
-  // the Lineup optimizer computes its own projections from raw lines.
+  // the Lineup optimizer gets each player's projection from player-lines.
   const [hasRequestedProjections, setHasRequestedProjections] = useState(false);
   useEffect(() => {
     if (page === "rankings") setHasRequestedProjections(true);
@@ -439,7 +439,6 @@ function App() {
               </div>
             </details>
           ))}
-          <p className="settings-note">Custom scoring settings are saved for this page. Projected points are calculated from these settings. Kicker projections arrive pre-scored, so field goal and fumble values don't change them. D/ST projections cover only touchdowns (scored at the average return-TD value), sacks, interceptions, and points and yards allowed (each tiered on the rounded expected value); the other D/ST settings don't change projections yet.</p>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { fetchAsUser, functionUrl } from "../supabase";
+import { parseStats, serverStatKeys, type PlayerStats } from "./rankings";
 
 export type PlayerLine = {
   bookmaker: string;
@@ -16,9 +17,16 @@ export type PlayerLine = {
   lastUpdatedAt: Date;
 };
 
+/** One bookmaker's projection from its own lines; stats it can't project are missing. */
+export type BookmakerStats = { bookmaker: string; stats: Partial<PlayerStats> };
+
 export type PlayerLines = {
   commenceTime: Date | null;
   lines: PlayerLine[];
+  /** The backend's projection (same as project-players; TDs calibrated); null if not sent. */
+  stats: PlayerStats | null;
+  /** Each bookmaker's projection; for each stat, `stats` is the average over the books with a value. */
+  bookmakerStats: BookmakerStats[];
 };
 
 
@@ -67,6 +75,16 @@ function parseLine(value: unknown): PlayerLine | undefined {
   };
 }
 
+function parseBookmakerStats(value: unknown): BookmakerStats | undefined {
+  if (!isRecord(value) || typeof value.bookmaker !== "string" || !isRecord(value.stats)) return undefined;
+  const stats: Partial<PlayerStats> = {};
+  for (const [key, serverKey] of Object.entries(serverStatKeys) as [keyof PlayerStats, string][]) {
+    const stat = toNumber(value.stats[serverKey]);
+    if (stat !== null) stats[key] = stat;
+  }
+  return { bookmaker: value.bookmaker, stats };
+}
+
 export async function getPlayerLines(
   playerId: string,
   gameId: string,
@@ -98,7 +116,12 @@ export async function getPlayerLines(
   }
 
   const commenceTime = isRecord(data.game) ? parseDate(data.game.commence_time) : null;
-  return { commenceTime, lines };
+  const stats = parseStats(data.stats) ?? null;
+  if (!stats) console.warn("player-lines returned no valid projection.");
+  const bookmakerStats = (Array.isArray(data.bookmaker_stats) ? data.bookmaker_stats : [])
+    .map(parseBookmakerStats)
+    .filter((entry): entry is BookmakerStats => entry !== undefined);
+  return { commenceTime, lines, stats, bookmakerStats };
 }
 
 // One cache for the page's lifetime, shared by the Rankings panel and the Lineup optimizer,

@@ -40,7 +40,8 @@ export type PlayerProjections = {
 };
 
 
-const serverStatKeys: Record<keyof PlayerStats, string> = {
+/** Our stat keys → the API's stat keys (project-players, player-lines). */
+export const serverStatKeys: Record<keyof PlayerStats, string> = {
   passingYards: "pass_yds",
   passingTouchdowns: "pass_tds",
   interceptions: "pass_int",
@@ -70,7 +71,8 @@ function parseStat(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function parseStats(value: unknown): PlayerStats | undefined {
+/** The API's stats object → PlayerStats (null stats become 0); undefined when invalid. */
+export function parseStats(value: unknown): PlayerStats | undefined {
   if (!isRecord(value)) return undefined;
   const stats = {} as PlayerStats;
   for (const [key, serverKey] of Object.entries(serverStatKeys) as [keyof PlayerStats, string][]) {
