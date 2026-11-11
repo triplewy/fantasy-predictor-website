@@ -365,7 +365,11 @@ function App() {
         const breakdown = getTeamPointsBreakdown(team.stats, settings);
         return { ...team, breakdown, points: breakdown.reduce((total, item) => total + item.points, 0) };
       })
-      .sort((a, b) => b.points - a.points)
+      .sort((a, b) => {
+        if (a.stats.pointsAllowed === null) return b.stats.pointsAllowed === null ? 0 : 1;
+        if (b.stats.pointsAllowed === null) return -1;
+        return a.stats.pointsAllowed - b.stats.pointsAllowed;
+      })
       .map((team, index) => ({ ...team, rank: index + 1 }))
       .filter((team) => `${team.team} ${team.opponent}`.toLowerCase().includes(query));
   }, [teams, settings, search]);
@@ -619,8 +623,11 @@ function App() {
                     <th scope="col">Rank</th>
                     <th scope="col">Team</th>
                     <th scope="col">Opponent</th>
-                    <th scope="col" className="points-heading">Projected points</th>
-                    <th scope="col">Breakdown</th>
+                    <th scope="col" className="sorted-column" aria-sort="ascending">
+                      Pts allowed <span className="sort-arrow" aria-hidden="true">↑</span>
+                    </th>
+                    <th scope="col">Total</th>
+                    <th scope="col">Spread</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -629,23 +636,9 @@ function App() {
                       <td className="rank">{team.rank}</td>
                       <td className="name">{team.team} D/ST</td>
                       <td>{team.opponent}</td>
-                      <td className="points">{team.points.toFixed(1)}</td>
-                      <td className="breakdown">
-                        {team.breakdown.length === 0 ? (
-                          <span className="breakdown-empty">No projected stats</span>
-                        ) : (
-                          <ul className="breakdown-list">
-                            {team.breakdown.map((item) => (
-                              <li key={item.key}>
-                                <span>{item.label}</span>
-                                <span className={item.points < 0 ? "breakdown-points negative" : "breakdown-points"}>
-                                  {formatPoints(item.points)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </td>
+                      <td>{team.stats.pointsAllowed === null ? "—" : team.stats.pointsAllowed.toFixed(1)}</td>
+                      <td>{team.gameTotal === null ? "—" : team.gameTotal.toFixed(1)}</td>
+                      <td>{team.spread === null ? "—" : `${team.spread > 0 ? "+" : ""}${team.spread.toFixed(1)}`}</td>
                     </tr>
                   ))}
                 </tbody>

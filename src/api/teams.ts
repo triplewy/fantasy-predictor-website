@@ -19,6 +19,9 @@ export type TeamProjection = {
   team: string;
   matchup: string;
   opponent: string;
+  /** Projected game total and team-perspective spread from project-games. */
+  gameTotal: number | null;
+  spread: number | null;
   stats: TeamStats;
 };
 
@@ -52,10 +55,15 @@ function parseTeam(value: unknown): TeamProjection | undefined {
   if (touchdowns === undefined || pointsAllowed === undefined) return undefined;
   const sacks = parseNullableStat(value.stats.sacks);
   if (yardsAllowed === undefined || interceptions === undefined || sacks === undefined) return undefined;
+  const gameTotal = parseNullableStat(value.game_total ?? value.total ?? value.stats.game_total ?? value.stats.total);
+  const spread = parseNullableStat(value.spread ?? value.stats.spread);
+  if (gameTotal === undefined || spread === undefined) return undefined;
   return {
     team: value.team,
     matchup: value.matchup,
     opponent: parseOpponent(value.matchup, value.team),
+    gameTotal,
+    spread,
     stats: { touchdowns, pointsAllowed, yardsAllowed, interceptions, sacks },
   };
 }

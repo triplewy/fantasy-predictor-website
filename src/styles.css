@@ -374,6 +374,17 @@ th {
   font-weight: 600;
 }
 
+th.sorted-column {
+  color: #263a2d;
+}
+
+.sort-arrow {
+  margin-left: 3px;
+  color: #3f7251;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 th,
 td {
   padding: 0 18px;
