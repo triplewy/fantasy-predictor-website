@@ -374,6 +374,19 @@ function App() {
       .filter((team) => `${team.team} ${team.opponent}`.toLowerCase().includes(query));
   }, [teams, settings, search]);
 
+  const topFavoriteKeys = useMemo(
+    () => {
+      const favorites = teams
+        .filter((team) => team.spread !== null && team.spread < 0)
+        .sort((a, b) => a.spread! - b.spread!)
+        .slice(0, 5);
+      return new Map<string, number>(
+        favorites.map((team, index): [string, number] => [`${team.team} ${team.matchup}`, index + 1]),
+      );
+    },
+    [teams],
+  );
+
   const renderSettingField = ({ key, label, unit, step }: (typeof scoringSettingFields)[number]) => (
     <label className="setting-field" key={key}>
       <span>{label}</span>
@@ -617,6 +630,9 @@ function App() {
 
           {isTeamTab ? (
             <div className="table-scroll">
+              <p className="spread-context-note">
+                ❗ A larger favorite spread can lead to more predictable opponent passing situations, creating sack and turnover chances.
+              </p>
               <table>
                 <thead>
                   <tr>
@@ -638,7 +654,19 @@ function App() {
                       <td>{team.opponent}</td>
                       <td>{team.stats.pointsAllowed === null ? "—" : team.stats.pointsAllowed.toFixed(1)}</td>
                       <td>{team.gameTotal === null ? "—" : team.gameTotal.toFixed(1)}</td>
-                      <td>{team.spread === null ? "—" : `${team.spread > 0 ? "+" : ""}${team.spread.toFixed(1)}`}</td>
+                      <td
+                        className={topFavoriteKeys.has(`${team.team} ${team.matchup}`)
+                          ? `favorite-spread favorite-spread-${topFavoriteKeys.get(`${team.team} ${team.matchup}`)}`
+                          : undefined}
+                        title={topFavoriteKeys.has(`${team.team} ${team.matchup}`)
+                          ? "Top-five favorite by spread; the opponent may face more passing situations, creating sack and turnover chances."
+                          : undefined}
+                        aria-label={topFavoriteKeys.has(`${team.team} ${team.matchup}`)
+                          ? `${team.team} is a top-five favorite; a likely pass-heavy opponent script may create sack and turnover chances.`
+                          : undefined}
+                      >
+                        {team.spread === null ? "—" : `${team.spread > 0 ? "+" : ""}${team.spread.toFixed(1)}`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
