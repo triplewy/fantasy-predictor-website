@@ -408,6 +408,49 @@ td {
   font-size: 13px;
 }
 
+tr.team-group-row th {
+  height: 34px;
+  border-top: 1px solid #dfe6e0;
+  background: #f1f4f1;
+  color: #39473d;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.team-group-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.team-group-name {
+  min-width: 34px;
+  color: #28312b;
+  font-weight: 700;
+}
+
+.team-group-projections {
+  color: #66716a;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.team-group-chevron {
+  margin-left: auto;
+  color: #53645a;
+  font-size: 14px;
+}
+
 td.favorite-spread {
   color: #000;
   font-weight: 700;
