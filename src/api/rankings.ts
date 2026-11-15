@@ -16,6 +16,27 @@ export type PlayerStats = {
   kickingPoints: number;
 };
 
+/** Fitted distribution behind one market's fair Over probabilities. */
+export type DistributionFunction = {
+  family: "normal" | "lognormal" | "gamma";
+  parameters: Record<string, number>;
+  support: "nonnegative" | "real";
+  /** The distribution's mean — what feeds the player's projected stat. */
+  mean: number;
+  /** Leave-one-out MSE of the fit. */
+  loo_mse: number;
+};
+
+/** One fitted stat market for a player, from the priority bookmaker for that market. */
+export type PlayerMarket = {
+  market: string;
+  bookmaker: string;
+  line_values: number[];
+  /** Fair (vig-removed) probability the stat lands Over each line value, same order. */
+  fair_over_probabilities: number[];
+  distribution_function: DistributionFunction;
+};
+
 export type Player = {
   id: string;
   gameId: string;
@@ -24,6 +45,9 @@ export type Player = {
   team: string;
   opponent: string;
   stats: PlayerStats;
+  markets: PlayerMarket[];
+  /** Newest `last_updated_at` across the player's markets. */
+  lastUpdatedAt: Date | null;
 };
 
 export type ProjectionWeek = {
@@ -92,6 +116,45 @@ function parseOpponent(matchup: string, team: string): string {
   return matchup;
 }
 
+export function parseDistributionFunction(value: unknown): DistributionFunction | undefined {
+  if (!isRecord(value)) return undefined;
+  const { family, parameters, support, mean, loo_mse } = value;
+  if (family !== "normal" && family !== "lognormal" && family !== "gamma") return undefined;
+  if (support !== "nonnegative" && support !== "real") return undefined;
+  if (typeof mean !== "number" || !Number.isFinite(mean)) return undefined;
+  if (typeof loo_mse !== "number" || !Number.isFinite(loo_mse)) return undefined;
+  const parsedParameters: Record<string, number> = {};
+  if (isRecord(parameters)) {
+    for (const [key, parameter] of Object.entries(parameters)) {
+      if (typeof parameter === "number" && Number.isFinite(parameter)) parsedParameters[key] = parameter;
+    }
+  }
+  return { family, parameters: parsedParameters, support, mean, loo_mse };
+}
+
+export function parseNumberArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const numbers = value.map((item) => (typeof item === "number" ? item : Number(item)));
+  return numbers.every((item) => Number.isFinite(item)) ? numbers : undefined;
+}
+
+function parseMarket(value: unknown): PlayerMarket | undefined {
+  if (!isRecord(value)) return undefined;
+  const { market, bookmaker } = value;
+  if (typeof market !== "string" || typeof bookmaker !== "string") return undefined;
+  const line_values = parseNumberArray(value.line_values);
+  const fair_over_probabilities = parseNumberArray(value.fair_over_probabilities);
+  const distribution_function = parseDistributionFunction(value.distribution_function);
+  if (!line_values || !fair_over_probabilities || !distribution_function) return undefined;
+  if (line_values.length !== fair_over_probabilities.length) return undefined;
+  return { market, bookmaker, line_values, fair_over_probabilities, distribution_function };
+}
+
+function parseMarkets(value: unknown): PlayerMarket[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(parseMarket).filter((market): market is PlayerMarket => market !== undefined);
+}
+
 function parsePlayer(value: unknown): Player | "unsupported-position" | undefined {
   if (!isRecord(value)) return undefined;
   const { player_id, game_id, player, team, position, matchup } = value;
@@ -120,6 +183,8 @@ function parsePlayer(value: unknown): Player | "unsupported-position" | undefine
     team,
     opponent: parseOpponent(matchup, team),
     stats,
+    markets: parseMarkets(value.markets),
+    lastUpdatedAt: parseTimestamp(value.last_updated_at),
   };
 }
 
@@ -144,11 +209,16 @@ function parseUpdatedAt(data: Record<string, unknown>): Date | null {
 }
 
 function parseWeek(value: unknown, games: unknown): ProjectionWeek | null {
-  if (!isRecord(value) || typeof value.start !== "string" || typeof value.end !== "string") {
+  if (!isRecord(value)) {
     return null;
   }
-  const start = new Date(value.start);
-  const end = new Date(value.end);
+  const startRaw = value.start ?? value.from;
+  const endRaw = value.end ?? value.to;
+  if (typeof startRaw !== "string" || typeof endRaw !== "string") {
+    return null;
+  }
+  const start = new Date(startRaw);
+  const end = new Date(endRaw);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
   return { start, end, games: typeof games === "number" ? games : 0 };
 }
@@ -190,5 +260,5 @@ export async function getPlayerProjections(
     throw new Error("Could not load player projections: the server returned an invalid response.");
   }
 
-  return { week: parseWeek(data.week, data.games), updatedAt: parseUpdatedAt(data), players };
+  return { week: parseWeek(data.window ?? data.week, data.games), updatedAt: parseUpdatedAt(data), players };
 }

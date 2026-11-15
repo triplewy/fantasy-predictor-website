@@ -101,13 +101,13 @@ function readFormat(): LineupFormat {
 function projectionNote(projection: PlayerProjection): string | null {
   switch (projection.status) {
     case "loading":
-      return "Loading lines…";
+      return "Loading projections…";
     case "no-game":
       return "No game this week";
     case "no-lines":
       return "No lines yet";
     case "error":
-      return "Lines unavailable";
+      return "Projections unavailable";
     case "ready":
       return null;
   }
@@ -142,9 +142,9 @@ function shortNote(note: string | null): string {
       return "Bye";
     case "No lines yet":
       return "—";
-    case "Lines unavailable":
+    case "Projections unavailable":
       return "Err";
-    case "Loading lines…":
+    case "Loading projections…":
       return "…";
     default:
       return note ?? "—";
@@ -185,6 +185,8 @@ export function LineupOptimizer({
   const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [playerList, setPlayerList] = useState<ListedPlayer[] | null>(null);
   const [playerListError, setPlayerListError] = useState<string | null>(null);
+  // Highlighted suggestion (arrow keys); Enter adds it. -1 = none.
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
 
   useEffect(() => {
     let isCurrent = true;
@@ -236,7 +238,12 @@ export function LineupOptimizer({
       .slice(0, 8);
   }, [playerList, query, rosterIds]);
 
-  // Points come from each player's projected stats (from player-lines) under
+  // Keep the highlight in range as the suggestion list changes.
+  useEffect(() => {
+    setHighlightedIndex((current) => (current >= suggestions.length ? suggestions.length - 1 : current));
+  }, [suggestions.length]);
+
+  // Points come from each player's projected stats (from project-players) under
   // the current scoring. Players without a projection count as 0 until one arrives.
   const rosterWithPoints: RosterPlayer[] = rosterWithTeams.map((saved) => {
     const projection = projections.get(saved.id) ?? { status: "loading" as const };
@@ -246,6 +253,7 @@ export function LineupOptimizer({
         points: 0,
         breakdown: [],
         stats: null,
+        markets: [],
         gameId: projection.status === "no-lines" ? projection.gameId : null,
         lastUpdatedAt: null,
         opponent: projection.status === "no-lines" ? projection.opponent : null,
@@ -259,6 +267,7 @@ export function LineupOptimizer({
       points: breakdown.reduce((total, item) => total + item.points, 0),
       breakdown,
       stats: projection.stats,
+      markets: projection.markets,
       gameId: projection.gameId,
       lastUpdatedAt: projection.lastUpdatedAt,
       opponent: projection.opponent,
@@ -266,7 +275,7 @@ export function LineupOptimizer({
       note: null,
     };
   });
-  const isLoadingProjections = isLoadingGames || rosterWithPoints.some((player) => player.note === "Loading lines…");
+  const isLoadingProjections = isLoadingGames || rosterWithPoints.some((player) => player.note === "Loading projections…");
   const optimal = optimizeLineup(rosterWithPoints, format);
   const starterCount = slotTypes.reduce((total, slot) => total + format[slot], 0);
 
@@ -303,6 +312,7 @@ export function LineupOptimizer({
     // Before the first lineup exists, the first optimal fill will place them.
     if (savedLineup) setSavedLineup(placeNewPlayer(lineup, id, position));
     setQuery("");
+    setHighlightedIndex(-1);
   }
 
   function removePlayer(id: string) {
@@ -474,15 +484,15 @@ export function LineupOptimizer({
           <tr className="lines-row" id={`lineup-lines-${player.id}`}>
             <td colSpan={6}>
               <PlayerLinesPanel
-                // Remount after an automatic refetch so an open panel shows the new lines.
+                // Remount after an automatic refetch so an open panel shows the new data.
                 key={refreshCount}
                 player={{
-                  id: player.id,
-                  gameId: player.gameId,
                   name: player.name,
                   stats: player.stats ?? emptyStats,
-                  breakdown: player.breakdown,
+                  markets: player.markets,
+                  lastUpdatedAt: player.lastUpdatedAt,
                 }}
+                breakdown={player.breakdown}
               />
             </td>
           </tr>
@@ -624,7 +634,7 @@ export function LineupOptimizer({
                 )}
               </span>
             ) : (
-              <span>{isLoadingProjections ? "Loading lines…" : "No line updates yet"}</span>
+              <span>{isLoadingProjections ? "Loading projections…" : "No projection updates yet"}</span>
             )}
           </div>
         )}
@@ -633,20 +643,39 @@ export function LineupOptimizer({
           <input
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              setHighlightedIndex(0);
+            }}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && suggestions[0]) addPlayer(suggestions[0]);
-              if (event.key === "Escape") setQuery("");
+              if (event.key === "Enter" && suggestions.length > 0) {
+                addPlayer(suggestions[highlightedIndex] ?? suggestions[0]);
+              } else if (event.key === "ArrowDown" && suggestions.length > 0) {
+                event.preventDefault();
+                setHighlightedIndex((current) => (current + 1) % suggestions.length);
+              } else if (event.key === "ArrowUp" && suggestions.length > 0) {
+                event.preventDefault();
+                setHighlightedIndex((current) =>
+                  current <= 0 ? suggestions.length - 1 : current - 1,
+                );
+              } else if (event.key === "Escape") {
+                setQuery("");
+              }
             }}
             placeholder={isPlayerListLoading ? "Loading players..." : "Add a player to your team by name or team"}
             aria-label="Search players to add to your team"
             disabled={isPlayerListLoading || playerList === null}
           />
           {suggestions.length > 0 && (
-            <ul className="roster-suggestions" aria-label="Matching players">
-              {suggestions.map((player) => (
-                <li key={player.id}>
-                  <button type="button" onClick={() => addPlayer(player)}>
+            <ul className="roster-suggestions" role="listbox" aria-label="Matching players">
+              {suggestions.map((player, index) => (
+                <li key={player.id} role="option" aria-selected={index === highlightedIndex}>
+                  <button
+                    type="button"
+                    className={index === highlightedIndex ? "highlighted" : undefined}
+                    onClick={() => addPlayer(player)}
+                    onMouseEnter={() => setHighlightedIndex(index)}
+                  >
                     <span className="lineup-name">{player.name}</span>
                     <span className="lineup-meta">
                       {player.position} · {player.team}

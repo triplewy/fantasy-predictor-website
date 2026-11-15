@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { signOut, useSession } from "./AuthGate";
+import { ComparePlayers } from "./ComparePlayers";
 import { LineupOptimizer } from "./LineupOptimizer";
 import { currentNflWeek } from "./nflWeek";
 import { PlayerLinesPanel } from "./PlayerLinesPanel";
@@ -167,6 +168,7 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
 const pageTabs: { page: Page; title: string }[] = [
   { page: "rankings", title: "Weekly rankings" },
   { page: "lineup", title: "Lineup optimizer" },
+  { page: "compare", title: "Compare players" },
 ];
 
 function App() {
@@ -224,11 +226,11 @@ function App() {
     });
   }
 
-  // Projections only power the Rankings page, so they're fetched the first time it's shown;
-  // the Lineup optimizer gets each player's projection from player-lines.
+  // Projections power the Rankings page, the Lineup optimizer and the Compare page, so
+  // they're fetched the first time any of those pages is shown.
   const [hasRequestedProjections, setHasRequestedProjections] = useState(false);
   useEffect(() => {
-    if (page === "rankings") setHasRequestedProjections(true);
+    if (page === "rankings" || page === "compare") setHasRequestedProjections(true);
   }, [page]);
 
   useEffect(() => {
@@ -261,7 +263,7 @@ function App() {
   const [isLoadingTeams, setIsLoadingTeams] = useState(true);
   const [teamsError, setTeamsError] = useState<string | null>(null);
   useEffect(() => {
-    if (page === "rankings") setHasRequestedTeams(true);
+    if (page === "rankings" || page === "compare") setHasRequestedTeams(true);
   }, [page]);
 
   useEffect(() => {
@@ -530,6 +532,17 @@ function App() {
 
       {page === "lineup" ? (
         <LineupOptimizer settings={settings} scoringControl={scoringControl} />
+      ) : page === "compare" ? (
+        <ComparePlayers
+          players={players}
+          teams={teams}
+          settings={settings}
+          scoringControl={scoringControl}
+          isLoading={isLoadingPlayers}
+          error={playersError}
+          teamsLoading={isLoadingTeams}
+          teamsError={teamsError}
+        />
       ) : (
 
         <section className="player-list" aria-label="Player rankings">
@@ -825,7 +838,7 @@ function App() {
                           {isExpanded && (
                             <tr className="lines-row" id={`lines-${player.id}`}>
                               <td colSpan={8}>
-                                <PlayerLinesPanel player={player} />
+                                <PlayerLinesPanel player={player} breakdown={player.breakdown} />
                               </td>
                             </tr>
                           )}

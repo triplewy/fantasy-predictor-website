@@ -172,7 +172,7 @@ export const scoringSettingFields: {
   { key: "dstYardsAllowed550Plus", label: "550+ yds allowed", unit: "pts", section: "defense" },
 ] as const;
 
-export type BreakdownItem = { key: keyof PlayerStats; label: string; points: number };
+export type BreakdownItem = { key: keyof PlayerStats; label: string; points: number; value: number };
 
 export function formatStat(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
@@ -242,9 +242,7 @@ export function getPointsBreakdown(
       points: stats.kickingPoints,
     },
   ];
-  return items
-    .filter((item) => item.value !== 0)
-    .map(({ key, label, points }) => ({ key, label, points }));
+  return items.filter((item) => item.value !== 0);
 }
 
 /** Points-allowed tiers: [highest points allowed in the tier, setting]. */

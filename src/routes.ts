@@ -4,8 +4,9 @@
  *   #/rankings              Rankings, all positions
  *   #/rankings/qb … /dst    Rankings filtered to a position tab (dst = D/ST)
  *   #/lineup-optimizer      Lineup optimizer
+ *   #/compare               Compare players
  */
-export type Page = "rankings" | "lineup";
+export type Page = "rankings" | "lineup" | "compare";
 export type PositionFilter = "ALL" | "QB" | "RB" | "WR" | "TE" | "FLEX" | "K" | "DST";
 
 const positionSlugs: Record<PositionFilter, string> = {
@@ -22,6 +23,7 @@ const positionSlugs: Record<PositionFilter, string> = {
 const pageHashes: Record<Page, string> = {
   rankings: "#/rankings",
   lineup: "#/lineup-optimizer",
+  compare: "#/compare",
 };
 
 // Older links, still honored.
@@ -48,6 +50,7 @@ type Route = { page: Page; position: PositionFilter };
 function parseHash(hash: string): Route {
   const lower = hash.toLowerCase();
   if (lower === pageHashes.lineup) return { page: "lineup", position: "ALL" };
+  if (lower === pageHashes.compare) return { page: "compare", position: "ALL" };
   const rankings = lower.match(/^#\/rankings(?:\/([a-z]+))?\/?$/);
   if (rankings) {
     const slug = rankings[1] ?? "";
@@ -59,6 +62,7 @@ function parseHash(hash: string): Route {
 
 function hashFor({ page, position }: Route): string {
   if (page === "lineup") return pageHashes.lineup;
+  if (page === "compare") return pageHashes.compare;
   return position === "ALL" ? pageHashes.rankings : `${pageHashes.rankings}/${positionSlugs[position]}`;
 }
 

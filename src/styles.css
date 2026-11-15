@@ -726,57 +726,10 @@ tbody .lines-row:hover {
   font-weight: 400;
 }
 
-.lines-table-scroll {
-  max-height: 260px;
-  overflow: auto;
-  border: 1px solid #e3e8e4;
-  border-radius: 5px;
-  background: #fff;
-}
-
-.lines-table {
-  width: auto;
-  min-width: 100%;
-}
-
-.lines-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: #f7f8f7;
-}
-
-.lines-table th,
-.lines-table td {
-  height: 30px;
-  padding: 0 12px;
-  border-top: 1px solid #f0f2f0;
-  font-size: 12px;
-}
-
-.lines-table thead th {
-  height: 32px;
-  border-top: 0;
+.lines-distribution {
+  margin: -4px 0 8px;
+  color: #7a827d;
   font-size: 11px;
-}
-
-.lines-table tbody th {
-  color: #3a443d;
-  font-weight: 600;
-}
-
-.lines-table .numeric {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.lines-table .implied {
-  color: #2f5a3d;
-  font-weight: 600;
-}
-
-.lines-table tbody tr:hover {
-  background: #f7f9f7;
 }
 
 .lines-header-side {
@@ -786,9 +739,7 @@ tbody .lines-row:hover {
   gap: 8px;
 }
 
-.prob-chart,
-.means-strip,
-.lines-legend {
+.prob-chart {
   --chart-surface: #fff;
   --chart-grid: #e8ebe8;
   --chart-axis: #c9cfca;
@@ -813,97 +764,6 @@ tbody .lines-row:hover {
 .prob-chart svg:focus-visible {
   outline: 2px solid #546d5d;
   outline-offset: -2px;
-}
-
-.prob-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  padding: 0 12px;
-  color: #5d665f;
-  font-size: 11px;
-}
-
-.prob-legend > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-book,
-.legend-reset {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 6px;
-  margin: -2px -6px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font-size: inherit;
-  cursor: pointer;
-}
-
-.legend-book:hover,
-.legend-reset:hover {
-  background: #f1f4f2;
-  color: #263a2d;
-}
-
-.legend-book[aria-pressed="true"] {
-  background: #edf1ee;
-  color: #263a2d;
-  font-weight: 600;
-}
-
-.legend-book.muted {
-  opacity: 0.5;
-}
-
-.legend-book.muted:hover {
-  opacity: 1;
-}
-
-.legend-reset {
-  margin-left: auto;
-  text-decoration: underline;
-  text-decoration-color: #c9cfca;
-  text-underline-offset: 2px;
-}
-
-.prob-focus-note {
-  margin: 6px 12px 0;
-  color: #7a827d;
-  font-size: 11px;
-}
-
-.legend-line {
-  width: 14px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--chart-average);
-  opacity: 0.25;
-}
-
-.legend-dot {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.book-heading,
-.prob-tooltip-book {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.legend-projection {
-  width: 1px;
-  height: 11px;
-  background: var(--chart-projection);
 }
 
 .prob-grid {
@@ -938,47 +798,21 @@ tbody .lines-row:hover {
   stroke-width: 1;
 }
 
-.prob-book-line {
+.prob-curve {
   fill: none;
+  stroke: var(--chart-projection);
   stroke-width: 2;
-  stroke-opacity: 0.35;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 
-/* Comparing one book: draw it at full strength and make the average a real line. */
-.prob-chart.focused .prob-book-line {
-  stroke-opacity: 1;
-}
-
-.prob-chart.focused .prob-average-line {
-  stroke-width: 2;
-  stroke-opacity: 0.55;
-}
-
-.prob-chart.focused .legend-line {
-  height: 2px;
-  opacity: 0.55;
-}
-
-.prob-book-dot {
+.prob-curve-dot {
+  fill: var(--chart-projection);
   stroke: var(--chart-surface);
   stroke-width: 1.5;
 }
 
-/* Neutral, behind the books: the consensus without competing with any book's color. */
-.prob-average-line {
-  fill: none;
-  stroke: var(--chart-average);
-  stroke-width: 4;
-  stroke-opacity: 0.18;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.prob-average-dot {
-  fill: var(--chart-average);
-  stroke: var(--chart-surface);
+.prob-curve-dot.active {
   stroke-width: 2;
 }
 
@@ -1011,8 +845,7 @@ tbody .lines-row:hover {
   font-weight: 600;
 }
 
-.prob-tooltip-average,
-.prob-tooltip li {
+.prob-tooltip-average {
   display: flex;
   justify-content: space-between;
   gap: 14px;
@@ -1024,198 +857,6 @@ tbody .lines-row:hover {
   padding-bottom: 5px;
   border-bottom: 1px solid #edf0ed;
   font-weight: 600;
-}
-
-.prob-tooltip-focus {
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 5px !important;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Main over/under line: bigger dot with a dark ring, so it stands out on the book's curve. */
-.prob-book-dot.main-line {
-  stroke: #28312b;
-  stroke-width: 2;
-}
-
-.legend-main-line {
-  width: 10px;
-  height: 10px;
-  border: 2px solid #28312b;
-  border-radius: 50%;
-  background: #a9b0ab;
-}
-
-.main-line-badge {
-  margin-right: 6px;
-  padding: 0 5px;
-  border-radius: 3px;
-  background: #28312b;
-  color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.prob-tooltip-under {
-  color: #7a827d;
-}
-
-.main-line-cell {
-  color: #1f3527;
-  text-decoration: underline;
-  text-decoration-color: #9fb3a5;
-  text-underline-offset: 2px;
-}
-
-.prob-tooltip-diff {
-  color: #7a827d;
-}
-
-.prob-tooltip ul {
-  margin: 5px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.prob-tooltip li {
-  padding: 1px 0;
-  color: #5d665f;
-}
-
-.lines-table .focused {
-  background: #eef3ef;
-}
-
-.lines-table thead th.focused {
-  background: #e3ebe5;
-}
-
-.means-strip {
-  position: relative;
-  margin-bottom: 8px;
-  padding: 8px 0 0;
-  border: 1px solid #e3e8e4;
-  border-radius: 5px;
-  background: #fff;
-}
-
-.means-strip svg {
-  display: block;
-  overflow: visible;
-}
-
-.means-caption {
-  margin: 0;
-  padding: 0 12px;
-  color: #5d665f;
-  font-size: 11px;
-}
-
-.means-caption strong {
-  color: #28312b;
-}
-
-.means-excluded {
-  color: #8a928c;
-}
-
-/* Median: dashed and lighter than the solid Avg (projection) line so the two read apart. */
-.means-median {
-  stroke: #7a827d;
-  stroke-width: 1.5;
-  stroke-dasharray: 3 3;
-}
-
-.means-median-label {
-  fill: #5d665f;
-  font-size: 11px;
-}
-
-.legend-median {
-  width: 0;
-  height: 11px;
-  border-left: 1.5px dashed #7a827d;
-}
-
-.means-dot {
-  cursor: pointer;
-}
-
-.means-dot circle:not(.means-hit) {
-  stroke: #fff;
-  stroke-width: 1.5;
-}
-
-.means-dot.muted {
-  opacity: 0.3;
-}
-
-.means-hit {
-  fill: transparent;
-}
-
-.means-tooltip {
-  min-width: 0;
-}
-
-.lines-legend {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid #edf0ed;
-  color: #5d665f;
-  font-size: 12px;
-}
-
-.vig-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 14px;
-  padding: 8px 0 10px;
-  border-bottom: 1px solid #edf0ed;
-  color: #5d665f;
-  font-size: 12px;
-}
-
-.vig-title {
-  color: #7a827d;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  cursor: help;
-}
-
-.vig-book {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.vig-book strong {
-  color: #28312b;
-}
-
-.legend-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.lines-legend-hint {
-  margin-left: auto;
-  color: #8a928c;
-  font-size: 11px;
-}
-
-.lines-legend-hint .legend-reset {
-  margin: 0;
 }
 
 .no-line {
@@ -1419,7 +1060,8 @@ tbody .lines-row:hover {
 }
 
 .roster-suggestions button:hover,
-.roster-suggestions button:focus-visible {
+.roster-suggestions button:focus-visible,
+.roster-suggestions button.highlighted {
   background: #f1f4f2;
 }
 
@@ -1722,4 +1364,166 @@ tbody .lines-row:hover {
       flex-direction: row;
     }
   }
+}
+
+/* Compare players page */
+.compare-table th[scope="row"] {
+  color: #656e68;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.compare-player-heading {
+  min-width: 170px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  vertical-align: top;
+}
+
+.compare-player-name {
+  color: #28312b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.compare-player-meta {
+  margin: 2px 0 6px;
+  color: #7a827d;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.compare-points {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-stat {
+  font-variant-numeric: tabular-nums;
+}
+
+.compare-raw-stat {
+  display: block;
+  color: #28312b;
+  font-size: 13px;
+}
+
+.compare-stat.winner,
+.compare-points.winner {
+  font-weight: 700;
+}
+
+.compare-stat.winner .compare-raw-stat {
+  font-weight: 700;
+}
+
+/* Market overlay charts on the compare page */
+.compare-markets {
+  margin-top: 22px;
+}
+
+.compare-markets-header h3 {
+  margin: 0 0 4px;
+  color: #28312b;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.compare-markets-header p {
+  margin: 0 0 12px;
+  color: #7a827d;
+  font-size: 12px;
+}
+
+.compare-market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+
+.compare-market-card {
+  min-width: 0;
+  padding: 12px 14px 14px;
+  border: 1px solid #e3e8e4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.compare-market-card h4 {
+  margin: 0 0 8px;
+  color: #28312b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.overlay-chart {
+  --chart-projection: #3a443d;
+}
+
+.overlay-curve {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.overlay-dot {
+  stroke: var(--chart-surface);
+  stroke-width: 1.5;
+}
+
+.overlay-projection {
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.75;
+}
+
+.overlay-zoom-selection {
+  fill: rgba(47, 111, 79, 0.15);
+  stroke: var(--chart-axis);
+  stroke-dasharray: 3 3;
+}
+
+.overlay-reset-zoom {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  padding: 3px 8px;
+  border: 1px solid #dfe4e0;
+  border-radius: 4px;
+  background: #fff;
+  color: #3a443d;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.overlay-reset-zoom:hover {
+  background: #f2f5f2;
+}
+
+.compare-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compare-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #5d665f;
+  font-size: 11px;
+}
+
+.compare-series-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
 }
