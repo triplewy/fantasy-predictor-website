@@ -371,8 +371,17 @@ function App() {
     }
 
     const projectionsByTeam = new Map(teams.map((team) => [team.team, team]));
-    return [...playersByTeam.entries()]
-      .map(([team, teamPlayers]) => {
+    // List every team with a projection, even if none of its players are available this week.
+    // While searching, hide empty groups unless the team itself matches the query.
+    const query = search.trim().toLowerCase();
+    const teamNames = new Set([...projectionsByTeam.keys(), ...playersByTeam.keys()]);
+    return [...teamNames]
+      .filter((team) => {
+        if (!query) return true;
+        if (playersByTeam.has(team)) return true;
+        return team.toLowerCase().includes(query);
+      })
+      .map((team) => {
         const projection = projectionsByTeam.get(team);
         const impliedScore =
           projection && projection.gameTotal !== null && projection.spread !== null
@@ -383,7 +392,7 @@ function App() {
           impliedScore,
           gameTotal: projection?.gameTotal ?? null,
           spread: projection?.spread ?? null,
-          players: teamPlayers,
+          players: playersByTeam.get(team) ?? [],
         };
       })
       .sort((a, b) => {
@@ -391,7 +400,7 @@ function App() {
         if (b.impliedScore === null) return -1;
         return b.impliedScore - a.impliedScore || a.team.localeCompare(b.team);
       });
-  }, [filteredPlayers, teams]);
+  }, [filteredPlayers, teams, search]);
 
   const filteredTeams = useMemo<RankedTeam[]>(() => {
     const query = search.trim().toLowerCase();
@@ -765,6 +774,13 @@ function App() {
                         </button>
                       </th>
                     </tr>
+                    {!isGroupCollapsed && group.players.length === 0 && (
+                      <tr className="player-row">
+                        <td colSpan={8}>
+                          <span className="breakdown-empty">No players available</span>
+                        </td>
+                      </tr>
+                    )}
                     {!isGroupCollapsed && group.players.map((player) => (
                       <tr key={player.id} className="player-row">
                         <td className="rank">{player.rank}</td>
@@ -825,7 +841,7 @@ function App() {
             {playersError && (
               <p className="empty-state error-state" role="alert">{playersError}</p>
             )}
-            {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && (
+            {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && playerTeamGroups.length === 0 && (
               <p className="empty-state">No players match your search.</p>
             )}
           </div>
