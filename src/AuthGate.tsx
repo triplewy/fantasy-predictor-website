@@ -78,7 +78,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return (
       <main className="auth-screen">
         <div className="auth-card">
-          <p className="eyebrow">Fantasy Football Odds</p>
+          <p className="eyebrow">FANTASY FOOTBALL</p>
           <h1>Player projections</h1>
           <p className="auth-text">Sign in with your Google account to continue.</p>
           <button type="button" className="google-button" onClick={signIn}>
