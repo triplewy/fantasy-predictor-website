@@ -117,6 +117,7 @@ export function ComparePlayers({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   // Saved picks persist across visits; stats and markets always come from live projections.
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>(readSavedPlayers);
+  const [teamDetailsExpanded, setTeamDetailsExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,6 +268,17 @@ export function ComparePlayers({
   );
 
   const winners = useMemo(() => winningIndexes(totals, false), [totals]);
+  const teamTotals = useMemo(
+    () =>
+      compared.map((player) => {
+        const team = teamsByTeam.get(teamCode(player.team));
+        return team && team.gameTotal !== null && team.spread !== null
+          ? (team.gameTotal - team.spread) / 2
+          : undefined;
+      }),
+    [compared, teamsByTeam],
+  );
+  const teamTotalWinners = useMemo(() => winningIndexes(teamTotals, false), [teamTotals]);
   const teamWinners = useMemo(
     () =>
       winningIndexes(
@@ -479,6 +491,31 @@ export function ComparePlayers({
                   ))}
                 </tr>
                 <tr>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      className="compare-toggle"
+                      aria-expanded={teamDetailsExpanded}
+                      onClick={() => setTeamDetailsExpanded((current) => !current)}
+                    >
+                      Team total
+                      <span className="compare-toggle-chevron" aria-hidden="true">
+                        {teamDetailsExpanded ? "▾" : "▸"}
+                      </span>
+                    </button>
+                  </th>
+                  {compared.map((player, index) => (
+                    <td
+                      key={player.id}
+                      className={`compare-stat${teamTotalWinners.has(index) ? " winner" : ""}`}
+                    >
+                      {teamTotals[index] === undefined ? "—" : teamTotals[index].toFixed(1)}
+                    </td>
+                  ))}
+                </tr>
+                {teamDetailsExpanded && (
+                <>
+                <tr className="compare-subordinate">
                   <th scope="row">Game total</th>
                   {compared.map((player, index) => {
                     const team = teamsByTeam.get(teamCode(player.team));
@@ -494,7 +531,7 @@ export function ComparePlayers({
                     );
                   })}
                 </tr>
-                <tr>
+                <tr className="compare-subordinate">
                   <th scope="row">Team spread</th>
                   {compared.map((player, index) => {
                     const team = teamsByTeam.get(teamCode(player.team));
@@ -510,6 +547,8 @@ export function ComparePlayers({
                     );
                   })}
                 </tr>
+                </>
+                )}
                 {visibleRows.map(({ key, label }) => {
                   const rowWinners = winningIndexes(
                     compared.map((_, index) => breakdowns[index].get(key)?.value),

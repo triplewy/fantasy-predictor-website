@@ -1275,6 +1275,35 @@ tbody tr:hover {
   font-weight: 700;
 }
 
+.compare-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.compare-toggle-chevron {
+  color: #53645a;
+  font-size: 12px;
+}
+
+/* Game total / team spread are subordinate to team total: smaller, non-bold, italic. */
+.compare-subordinate th[scope="row"],
+.compare-subordinate .compare-stat {
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.compare-subordinate .compare-stat.winner {
+  font-weight: 400;
+}
+
 /* Market overlay charts on the compare page */
 .compare-markets {
   margin-top: 22px;
