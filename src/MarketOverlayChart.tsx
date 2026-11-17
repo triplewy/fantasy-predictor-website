@@ -305,10 +305,16 @@ export function MarketOverlayChart({
       {activeLine !== null && (
         <div className="prob-tooltip" style={{ ...tooltipStyle, top: margin.top }} role="status">
           <p className="prob-tooltip-title">Line {activeLine}</p>
-          {prepared.map((entry) => {
-            const point = entry.points.find((candidate) => candidate.lineValue === activeLine);
-            if (!point) return null;
-            return (
+          {prepared
+            .map((entry) => ({
+              entry,
+              point: entry.points.find((candidate) => candidate.lineValue === activeLine),
+            }))
+            .filter((item): item is { entry: (typeof prepared)[number]; point: { lineValue: number; probability: number } } =>
+              item.point !== undefined,
+            )
+            .sort((a, b) => b.point.probability - a.point.probability)
+            .map(({ entry, point }) => (
               <p key={entry.id} className="prob-tooltip-average">
                 <span>
                   <span className="compare-series-dot" style={{ background: entry.color }} aria-hidden="true" />
@@ -316,8 +322,7 @@ export function MarketOverlayChart({
                 </span>
                 <span>{percent(point.probability)}</span>
               </p>
-            );
-          })}
+            ))}
         </div>
       )}
 
