@@ -5,6 +5,7 @@ import type { TeamProjection } from "./api/teams";
 import { teamCode } from "./teams";
 import { formatStat, getPointsBreakdown, type ScoringSettings } from "./scoring";
 import { marketInfo } from "./markets";
+import { comparePlayerParam } from "./routes";
 import { readStorageJson, writeStorageJson } from "./storage";
 import { MarketOverlayChart, type OverlaySeries } from "./MarketOverlayChart";
 
@@ -139,6 +140,41 @@ export function ComparePlayers({
     () => new Map(players.map((player) => [player.id, player])),
     [players],
   );
+
+  // A "Compare" button from another page can land here with `?player=<id>` in the hash.
+  // Add that player on arrival, then drop the query so the URL reads `#/compare`.
+  // The query is only stripped once the player is found, or once both data sources have
+  // finished loading and the player genuinely doesn't exist.
+  useEffect(() => {
+    const param = comparePlayerParam();
+    if (!param) return;
+    const target = projectionsById.get(param) ?? playerList?.find((p) => p.id === param);
+    if (!target) {
+      if (isLoading || playerList === null) return;
+      history.replaceState(null, "", "#/compare");
+      return;
+    }
+    setSavedPlayers((current) => {
+      if (current.length >= maxPlayers || current.some((saved) => saved.id === target.id)) {
+        return current;
+      }
+      return [
+        ...current,
+        {
+          id: target.id,
+          name: target.name,
+          position: target.position,
+          team: target.team,
+          opponent: "opponent" in target ? (target.opponent as string) ?? "" : "",
+        },
+      ];
+    });
+    try {
+      history.replaceState(null, "", "#/compare");
+    } catch {
+      // Ignore: the URL is cosmetic here.
+    }
+  }, [isLoading, playerList, projectionsById]);
 
   // project-teams returns raw team codes; normalize both sides to match /players.
   const teamsByTeam = useMemo(

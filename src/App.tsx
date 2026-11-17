@@ -1,9 +1,8 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { signOut, useSession } from "./AuthGate";
 import { ComparePlayers } from "./ComparePlayers";
 import { LineupOptimizer } from "./LineupOptimizer";
 import { currentNflWeek } from "./nflWeek";
-import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import {
   currentPage,
   currentRankingsPosition,
@@ -195,7 +194,6 @@ function App() {
   });
   const [isExcludedMenuOpen, setIsExcludedMenuOpen] = useState(false);
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
-  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [collapsedTeamGroups, setCollapsedTeamGroups] = useState<Set<string>>(() => new Set());
   const [page, setPage] = useState<Page>(currentPage);
   const session = useSession();
@@ -212,10 +210,6 @@ function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-
-  function toggleExpanded(id: string) {
-    setExpandedPlayerId((current) => (current === id ? null : id));
-  }
 
   function toggleTeamGroup(team: string) {
     setCollapsedTeamGroups((current) => {
@@ -771,80 +765,56 @@ function App() {
                         </button>
                       </th>
                     </tr>
-                    {!isGroupCollapsed && group.players.map((player) => {
-                      const isExpanded = expandedPlayerId === player.id;
-                      return (
-                        <Fragment key={player.id}>
-                          <tr
-                            className={isExpanded ? "player-row expanded" : "player-row"}
-                            onClick={() => toggleExpanded(player.id)}
-                          >
-                            <td className="rank">{player.rank}</td>
-                            <td className="name">
-                              <button
-                                type="button"
-                                className="row-toggle"
-                                aria-expanded={isExpanded}
-                                aria-controls={`lines-${player.id}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  toggleExpanded(player.id);
-                                }}
-                              >
-                                <span className="row-chevron" aria-hidden="true">
-                                  {isExpanded ? "▾" : "▸"}
-                                </span>
-                                {player.name}
-                              </button>
-                            </td>
-                            <td>{player.position}</td>
-                            <td>{player.team}</td>
-                            <td>{player.opponent}</td>
-                            <td className="points">{player.points.toFixed(1)}</td>
-                            <td className="breakdown">
-                              {player.breakdown.length === 0 ? (
-                                <span className="breakdown-empty">No projected stats</span>
-                              ) : (
-                                <ul className="breakdown-list">
-                                  {player.breakdown.map((item) => (
-                                    <li key={item.label}>
-                                      <span>{item.label}</span>
-                                      <span
-                                        className={
-                                          item.points < 0 ? "breakdown-points negative" : "breakdown-points"
-                                        }
-                                      >
-                                        {formatPoints(item.points)}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </td>
-                            <td className="action">
-                              <button
-                                type="button"
-                                className="row-action"
-                                aria-label={`Exclude ${player.name}`}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  excludePlayer(player);
-                                }}
-                              >
-                                Exclude
-                              </button>
-                            </td>
-                          </tr>
-                          {isExpanded && (
-                            <tr className="lines-row" id={`lines-${player.id}`}>
-                              <td colSpan={8}>
-                                <PlayerLinesPanel player={player} breakdown={player.breakdown} />
-                              </td>
-                            </tr>
+                    {!isGroupCollapsed && group.players.map((player) => (
+                      <tr key={player.id} className="player-row">
+                        <td className="rank">{player.rank}</td>
+                        <td className="name">{player.name}</td>
+                        <td>{player.position}</td>
+                        <td>{player.team}</td>
+                        <td>{player.opponent}</td>
+                        <td className="points">{player.points.toFixed(1)}</td>
+                        <td className="breakdown">
+                          {player.breakdown.length === 0 ? (
+                            <span className="breakdown-empty">No projected stats</span>
+                          ) : (
+                            <ul className="breakdown-list">
+                              {player.breakdown.map((item) => (
+                                <li key={item.label}>
+                                  <span>{item.label}</span>
+                                  <span
+                                    className={
+                                      item.points < 0 ? "breakdown-points negative" : "breakdown-points"
+                                    }
+                                  >
+                                    {formatPoints(item.points)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
                           )}
-                        </Fragment>
-                      );
-                    })}
+                        </td>
+                        <td className="action">
+                          <button
+                            type="button"
+                            className="row-action"
+                            aria-label={`compare ${player.name}`}
+                            onClick={() => {
+                              window.location.hash = `#/compare?player=${player.id}`;
+                            }}
+                          >
+                            Compare
+                          </button>
+                          <button
+                            type="button"
+                            className="row-action"
+                            aria-label={`exclude ${player.name}`}
+                            onClick={() => excludePlayer(player)}
+                          >
+                            Exclude
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 );
               })}

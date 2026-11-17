@@ -1,8 +1,7 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { getAllPlayers, type ListedPlayer } from "./api/players";
-import type { Player, PlayerStats, Position } from "./api/rankings";
+import type { Player, Position } from "./api/rankings";
 import { currentNflWeek } from "./nflWeek";
-import { PlayerLinesPanel } from "./PlayerLinesPanel";
 import { getPointsBreakdown, type ScoringSettings } from "./scoring";
 import { useRosterProjections, type PlayerProjection } from "./useRosterProjections";
 import {
@@ -52,16 +51,6 @@ function loadPlayerList() {
 const maxSlotsPerType = 4;
 
 // Placeholder stats for the lines panel when a player has a game but no lines yet.
-const emptyStats: PlayerStats = {
-  passingYards: 0,
-  passingTouchdowns: 0,
-  interceptions: 0,
-  rushingYards: 0,
-  receptions: 0,
-  receivingYards: 0,
-  touchdowns: 0,
-  kickingPoints: 0,
-};
 
 function isSavedRosterPlayer(value: unknown): value is SavedRosterPlayer {
   if (typeof value !== "object" || value === null) return false;
@@ -182,7 +171,6 @@ export function LineupOptimizer({
   const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false);
   // null until the user (or the first optimal fill) sets a lineup.
   const [savedLineup, setSavedLineup] = useState<SavedLineup | null>(readLineup);
-  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
   const [playerList, setPlayerList] = useState<ListedPlayer[] | null>(null);
   const [playerListError, setPlayerListError] = useState<string | null>(null);
   // Highlighted suggestion (arrow keys); Enter adds it. -1 = none.
@@ -213,7 +201,7 @@ export function LineupOptimizer({
     () => roster.map((saved) => ({ ...saved, team: listedById.get(saved.id)?.team ?? saved.team })),
     [roster, listedById],
   );
-  const { projections, gamesError, isLoadingGames, hasNoGames, refreshCount, loadedAt } =
+  const { projections, gamesError, isLoadingGames, hasNoGames, loadedAt } =
     useRosterProjections(rosterWithTeams);
   const now = useNow();
 
@@ -364,34 +352,13 @@ export function LineupOptimizer({
     key: string,
     context: { kind: "starter"; slotIndex: number } | { kind: "bench" },
   ) {
-    // Players with a game this week can be opened to see their raw bookmaker lines.
-    const canExpand = player !== null && player.gameId !== null;
-    const isExpanded = canExpand && expandedPlayerId === player.id;
-    const toggle = () => canExpand && setExpandedPlayerId(isExpanded ? null : player.id);
     return (
       <Fragment key={key}>
-        <tr
-          className={canExpand ? (isExpanded ? "player-row expanded" : "player-row") : undefined}
-          onClick={toggle}
-        >
+        <tr>
           <td className="lineup-slot">{slotLabel}</td>
           <td>
             {!player ? (
               <span className="lineup-empty">{emptyLabel}</span>
-            ) : canExpand ? (
-              <button
-                type="button"
-                className="row-toggle lineup-toggle"
-                aria-expanded={isExpanded}
-                aria-controls={`lineup-lines-${player.id}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  toggle();
-                }}
-              >
-                <span className="row-chevron" aria-hidden="true">{isExpanded ? "▾" : "▸"}</span>
-                <span>{renderPlayerCell(player)}</span>
-              </button>
             ) : (
               renderPlayerCell(player)
             )}
@@ -468,6 +435,17 @@ export function LineupOptimizer({
               <button
                 type="button"
                 className="row-action"
+                aria-label={`Compare ${player.name}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  window.location.hash = `#/compare?player=${player.id}`;
+                }}
+              >
+                Compare
+              </button>
+              <button
+                type="button"
+                className="row-action"
                 aria-label={`Remove ${player.name} from your team`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -480,23 +458,6 @@ export function LineupOptimizer({
             )}
           </td>
         </tr>
-        {isExpanded && player.gameId && (
-          <tr className="lines-row" id={`lineup-lines-${player.id}`}>
-            <td colSpan={6}>
-              <PlayerLinesPanel
-                // Remount after an automatic refetch so an open panel shows the new data.
-                key={refreshCount}
-                player={{
-                  name: player.name,
-                  stats: player.stats ?? emptyStats,
-                  markets: player.markets,
-                  lastUpdatedAt: player.lastUpdatedAt,
-                }}
-                breakdown={player.breakdown}
-              />
-            </td>
-          </tr>
-        )}
       </Fragment>
     );
   }

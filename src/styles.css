@@ -612,131 +612,10 @@ tbody tr:hover {
   font-size: 12px;
 }
 
-.player-row {
-  cursor: pointer;
-}
-
-.player-row.expanded,
-.player-row.expanded:hover {
-  background: #f3f6f4;
-}
-
-.row-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font-weight: inherit;
-  cursor: pointer;
-}
-
-.row-chevron {
-  width: 10px;
-  color: #8a928c;
-  font-size: 11px;
-}
-
-.lines-row,
-tbody .lines-row:hover {
-  background: #fafbfa;
-}
-
-.lines-row > td {
-  height: auto;
-  padding: 0;
-  border-top: 1px solid #e3e8e4;
-  white-space: normal;
-}
-
-/* The table can scroll sideways; keep the panel pinned to the visible width. */
-.lines-panel {
-  position: sticky;
-  left: 0;
-  width: 100cqi;
-  padding: 16px 18px 18px;
-}
-
 .lines-status {
   margin: 0;
   color: #69716c;
   font-size: 13px;
-}
-
-.lines-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid #edf0ed;
-}
-
-.lines-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
-  margin: 0;
-  color: #7a827d;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.lines-sections {
-  display: grid;
-  /* Portrait charts sit side by side; table sections span the full row. */
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
-  /* Let charts fill gaps left beside full-width table cards. */
-  grid-auto-flow: row dense;
-  gap: 18px;
-  padding-top: 14px;
-}
-
-.lines-section {
-  min-width: 0;
-}
-
-.lines-section.wide {
-  grid-column: 1 / -1;
-}
-
-.lines-section h3 {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 12px;
-  margin: 0 0 8px;
-  color: #28312b;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.lines-projection {
-  color: #5d665f;
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.lines-market-label {
-  color: #656e68;
-  font-weight: 400;
-}
-
-.lines-distribution {
-  margin: -4px 0 8px;
-  color: #7a827d;
-  font-size: 11px;
-}
-
-.lines-header-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
 }
 
 .prob-chart {
@@ -1115,7 +994,6 @@ tbody .lines-row:hover {
 .lineup-table-scroll {
   position: relative;
   overflow-x: auto;
-  /* Lets the expanded lines panel size itself to the visible width (see .lines-panel). */
   container-type: inline-size;
   border: 1px solid #e3e8e4;
   border-radius: 5px;
@@ -1142,14 +1020,7 @@ tbody .lines-row:hover {
   white-space: normal;
 }
 
-.lineup-toggle {
-  align-items: flex-start;
-  text-align: left;
-}
-
-.lineup-toggle .row-chevron {
-  margin-top: 3px;
-}
+/* Lineup toggle removed - Compare button handles navigation. */
 
 .lineup-totals {
   display: flex;
@@ -1327,20 +1198,6 @@ tbody .lines-row:hover {
 
   .search input {
     width: 100%;
-  }
-
-  .lines-panel {
-    padding: 14px 13px 16px;
-  }
-
-  .lines-header {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .lines-meta,
-  .lines-header-side {
-    align-items: flex-start;
   }
 
   .position-filters {

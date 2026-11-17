@@ -5,6 +5,7 @@
  *   #/rankings/qb … /dst    Rankings filtered to a position tab (dst = D/ST)
  *   #/lineup-optimizer      Lineup optimizer
  *   #/compare               Compare players
+ *   #/compare?player=<id>   Compare players, adding that player on arrival
  */
 export type Page = "rankings" | "lineup" | "compare";
 export type PositionFilter = "ALL" | "QB" | "RB" | "WR" | "TE" | "FLEX" | "K" | "DST";
@@ -46,9 +47,15 @@ function isRouteHash(hash: string) {
 
 type Route = { page: Page; position: PositionFilter };
 
+/** The query string portion of a hash ("" when absent), e.g. "?player=123". */
+function queryFor(hash: string): string {
+  const index = hash.indexOf("?");
+  return index === -1 ? "" : hash.slice(index);
+}
+
 /** Parse a route hash (case-insensitive). Unknown routes and positions fall back to Rankings/All. */
 function parseHash(hash: string): Route {
-  const lower = hash.toLowerCase();
+  const lower = hash.split("?")[0].toLowerCase();
   if (lower === pageHashes.lineup) return { page: "lineup", position: "ALL" };
   if (lower === pageHashes.compare) return { page: "compare", position: "ALL" };
   const rankings = lower.match(/^#\/rankings(?:\/([a-z]+))?\/?$/);
@@ -66,8 +73,23 @@ function hashFor({ page, position }: Route): string {
   return position === "ALL" ? pageHashes.rankings : `${pageHashes.rankings}/${positionSlugs[position]}`;
 }
 
+/** Canonical hash for a route, preserving the ?player= query on #/compare. */
+function canonicalHash(hash: string): string {
+  const route = parseHash(hash);
+  const canonical = hashFor(route);
+  return route.page === "compare" ? canonical + queryFor(hash) : canonical;
+}
+
 function pageForHash(hash: string): Page {
   return parseHash(hash).page;
+}
+
+/** The `?player=<id>` query on #/compare, if any. */
+export function comparePlayerParam(): string | null {
+  const { hash } = window.location;
+  const index = hash.indexOf("?");
+  if (index === -1) return null;
+  return new URLSearchParams(hash.slice(index + 1)).get("player");
 }
 
 export function currentPage(): Page {
@@ -98,7 +120,7 @@ function replaceHash(hash: string) {
 export function normalizeLocation() {
   const { hash } = window.location;
   if (!isRouteHash(hash)) return;
-  const canonical = hashFor(parseHash(hash));
+  const canonical = canonicalHash(hash);
   if (hash !== canonical) replaceHash(canonical);
 }
 
@@ -121,7 +143,7 @@ export function restoreRouteAfterSignIn() {
     // Ignore: fall through to normalizing.
   }
   if (saved && isRouteHash(saved) && isRouteHash(window.location.hash)) {
-    replaceHash(hashFor(parseHash(saved)));
+    replaceHash(canonicalHash(saved));
   } else {
     normalizeLocation();
   }
