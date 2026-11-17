@@ -22,9 +22,12 @@ const percent = (value: number) => `${Math.round(value * 100)}%`;
 export function MarketOverlayChart({
   label,
   series,
+  dulledIds,
 }: {
   label: string;
   series: OverlaySeries[];
+  /** Players whose curves are dimmed. */
+  dulledIds?: ReadonlySet<string>;
 }) {
   const [containerRef, width] = useWidth<HTMLDivElement>();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -39,14 +42,16 @@ export function MarketOverlayChart({
 
   const prepared = useMemo(
     () =>
-      series.map((entry) => ({
-        ...entry,
-        points: entry.lineValues
-          .map((lineValue, index) => ({ lineValue, probability: entry.probabilities[index] }))
-          .sort((a, b) => a.lineValue - b.lineValue),
-      })),
+      series
+        .map((entry) => ({
+          ...entry,
+          points: entry.lineValues
+            .map((lineValue, index) => ({ lineValue, probability: entry.probabilities[index] }))
+            .sort((a, b) => a.lineValue - b.lineValue),
+        })),
     [series],
   );
+  const isDimmed = (id: string) => dulledIds?.has(id) ?? false;
 
   const allLines = prepared.flatMap((entry) => entry.points.map((point) => point.lineValue));
   const minLine = allLines.length > 0 ? Math.min(...allLines) : 0;
@@ -180,7 +185,7 @@ export function MarketOverlayChart({
 
   return (
     <div className="prob-chart overlay-chart" ref={containerRef}>
-      {width > 0 && (
+      {width > 0 && prepared.length > 0 && (
         <svg
           width={width}
           height={height}
@@ -225,7 +230,7 @@ export function MarketOverlayChart({
               entry.projection <= domain[1] && (
                 <line
                   key={`projection-${entry.id}`}
-                  className="overlay-projection"
+                  className={`overlay-projection${isDimmed(entry.id) ? " dimmed" : ""}`}
                   stroke={entry.color}
                   x1={x(entry.projection)}
                   x2={x(entry.projection)}
@@ -238,7 +243,7 @@ export function MarketOverlayChart({
           {prepared.map((entry) => (
             <path
               key={entry.id}
-              className="overlay-curve"
+              className={`overlay-curve${isDimmed(entry.id) ? " dimmed" : ""}`}
               stroke={entry.color}
               d={entry.points
                 .filter((point) => point.lineValue >= domain[0] && point.lineValue <= domain[1])
@@ -253,7 +258,7 @@ export function MarketOverlayChart({
               .map((point) => (
                 <circle
                   key={`${entry.id}-${point.lineValue}`}
-                  className="overlay-dot"
+                  className={`overlay-dot${isDimmed(entry.id) ? " dimmed" : ""}`}
                   fill={entry.color}
                   cx={x(point.lineValue)}
                   cy={y(point.probability)}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { getAllPlayers, type ListedPlayer } from "./api/players";
 import type { Player, PlayerMarket, PlayerStats } from "./api/rankings";
 import type { TeamProjection } from "./api/teams";
@@ -118,6 +118,25 @@ export function ComparePlayers({
   // Saved picks persist across visits; stats and markets always come from live projections.
   const [savedPlayers, setSavedPlayers] = useState<SavedPlayer[]>(readSavedPlayers);
   const [teamDetailsExpanded, setTeamDetailsExpanded] = useState(false);
+  // Legend interactions: ⌘/Ctrl-click toggles a player dulled (multi-select); plain click shows only that player (click again to show all).
+  const [dulledPlayerIds, setDulledPlayerIds] = useState<ReadonlySet<string>>(new Set());
+
+  function handleLegendClick(playerId: string, event: ReactMouseEvent) {
+    if (event.metaKey || event.ctrlKey) {
+      setDulledPlayerIds((current) => {
+        const next = new Set(current);
+        if (next.has(playerId)) next.delete(playerId);
+        else next.add(playerId);
+        return next;
+      });
+      return;
+    }
+    setDulledPlayerIds((current) => {
+      const others = comparedIdList.filter((id) => id !== playerId);
+      const onlyThisShown = others.length > 0 && others.every((id) => current.has(id)) && !current.has(playerId);
+      return onlyThisShown ? new Set() : new Set(others);
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +211,7 @@ export function ComparePlayers({
         .filter((player): player is Player => player !== undefined),
     [savedPlayers, projectionsById],
   );
+  const comparedIdList = useMemo(() => compared.map((player) => player.id), [compared]);
 
   useEffect(() => {
     writeSavedPlayers(savedPlayers);
@@ -360,6 +380,34 @@ export function ComparePlayers({
   }, [compared, teamsByTeam]);
 
   const hasLiveMarkets = marketOverlays.length > 0;
+
+  function renderLegend(series: OverlaySeries[]) {
+    return (
+      <ul className="compare-legend">
+        {series.map((entry) => {
+          const dulled = dulledPlayerIds.has(entry.id);
+          return (
+            <li key={entry.id}>
+              <button
+                type="button"
+                className={`compare-legend-item${dulled ? " dulled" : ""}`}
+                aria-pressed={dulled}
+                title="Click: show only this player (again to show all). ⌘/Ctrl-click: toggle dull"
+                onClick={(event) => handleLegendClick(entry.id, event)}
+              >
+                <span
+                  className="compare-series-dot"
+                  style={{ background: entry.color }}
+                  aria-hidden="true"
+                />
+                {entry.name}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
 
   return (
     <section className="player-list" aria-label="Compare players">
@@ -589,37 +637,23 @@ export function ComparePlayers({
                 {marketOverlays.map(({ market, label, series }) => (
                   <section key={market} className="compare-market-card">
                     <h4>{label}</h4>
-                    <MarketOverlayChart label={label} series={series} />
-                    <ul className="compare-legend">
-                      {series.map((entry) => (
-                        <li key={entry.id}>
-                          <span
-                            className="compare-series-dot"
-                            style={{ background: entry.color }}
-                            aria-hidden="true"
-                          />
-                          {entry.name}
-                        </li>
-                      ))}
-                    </ul>
+                    <MarketOverlayChart
+                      label={label}
+                      series={series}
+                      dulledIds={dulledPlayerIds}
+                    />
+                    {renderLegend(series)}
                   </section>
                 ))}
                 {teamMarketOverlays.map(({ market, label, series }) => (
                   <section key={market} className="compare-market-card">
                     <h4>{label}</h4>
-                    <MarketOverlayChart label={label} series={series} />
-                    <ul className="compare-legend">
-                      {series.map((entry) => (
-                        <li key={entry.id}>
-                          <span
-                            className="compare-series-dot"
-                            style={{ background: entry.color }}
-                            aria-hidden="true"
-                          />
-                          {entry.name}
-                        </li>
-                      ))}
-                    </ul>
+                    <MarketOverlayChart
+                      label={label}
+                      series={series}
+                      dulledIds={dulledPlayerIds}
+                    />
+                    {renderLegend(series)}
                   </section>
                 ))}
               </div>
