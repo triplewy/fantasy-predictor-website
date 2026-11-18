@@ -469,10 +469,7 @@ export function LineupOptimizer({
       <div className="list-heading">
         <div>
           <h2>Lineup optimizer</h2>
-          <p>
-            Add your team, set your starters, and compare against the optimal lineup
-            {` · ${weekRangeLabel()}`}
-          </p>
+          <p>{weekRangeLabel()}</p>
         </div>
       </div>
 

@@ -425,7 +425,7 @@ export function ComparePlayers({
       {teamsLoading && <p className="lineup-note" role="status">Loading team projections…</p>}
       {teamsError && <p className="lineup-note error-state" role="alert">{teamsError}</p>}
 
-      <div className="roster-search">
+      <div className="roster-search compare-search">
         <input
           type="search"
           value={query}

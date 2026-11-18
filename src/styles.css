@@ -895,6 +895,11 @@ tbody tr:hover {
   font-size: 12px;
 }
 
+.compare-search {
+  margin-right: 22px;
+  margin-left: 22px;
+}
+
 .roster-search {
   position: relative;
   margin-bottom: 12px;
@@ -1307,6 +1312,7 @@ tbody tr:hover {
 /* Market overlay charts on the compare page */
 .compare-markets {
   margin-top: 22px;
+  padding: 0 22px 22px;
 }
 
 .compare-markets-header h3 {
