@@ -379,7 +379,7 @@ export function LineupOptimizer({
             ) : null}
           </td>
           <td className="points">
-            {!player ? "—" : player.hasProjection ? player.points.toFixed(1) : <span className="lineup-empty" title={player.note ?? undefined}>{shortNote(player.note)}</span>}
+            {!player ? "—" : player.hasProjection ? player.points.toFixed(2) : <span className="lineup-empty" title={player.note ?? undefined}>{shortNote(player.note)}</span>}
           </td>
           <td className="breakdown">
             {player && player.breakdown.length > 0 && (
@@ -558,16 +558,16 @@ export function LineupOptimizer({
         <div className="lineup-panel-heading">
           <h3>My lineup</h3>
           <div className="lineup-totals">
-            <span className="lineup-total">{currentTotal.toFixed(1)} pts</span>
+            <span className="lineup-total">{currentTotal.toFixed(2)} pts</span>
             {roster.length > 0 &&
               (isOptimal ? (
                 <span className="lineup-optimal-note">✓ Optimal lineup</span>
               ) : (
                 <>
                   <span className="lineup-optimal-note">
-                    Optimal {optimal.total.toFixed(1)} pts{" "}
+                    Optimal {optimal.total.toFixed(2)} pts{" "}
                     {/* Your lineup relative to optimal, so it reads as points you're missing. */}
-                    <span className="lineup-diff">(−{pointsBehindOptimal.toFixed(1)})</span>
+                    <span className="lineup-diff">(−{pointsBehindOptimal.toFixed(2)})</span>
                   </span>
                   <button type="button" className="format-option" onClick={applyOptimalLineup}>
                     Use optimal lineup

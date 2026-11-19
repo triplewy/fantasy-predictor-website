@@ -788,7 +788,7 @@ function App() {
                         <td>{player.position}</td>
                         <td>{player.team}</td>
                         <td>{player.opponent}</td>
-                        <td className="points">{player.points.toFixed(1)}</td>
+                        <td className="points">{player.points.toFixed(2)}</td>
                         <td className="breakdown">
                           {player.breakdown.length === 0 ? (
                             <span className="breakdown-empty">No projected stats</span>
