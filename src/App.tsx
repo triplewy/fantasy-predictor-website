@@ -71,7 +71,7 @@ function formatUpdatedAt(date: Date) {
 }
 
 function formatPoints(points: number) {
-  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)}`;
+  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(2)}`;
 }
 
 const scoringStorageKey = "fantasy-scoring-settings";
