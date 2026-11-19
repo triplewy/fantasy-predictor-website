@@ -147,7 +147,7 @@ function weekRangeLabel() {
 }
 
 function formatPoints(points: number) {
-  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(1)}`;
+  return `${points >= 0 ? "+" : "−"}${Math.abs(points).toFixed(2)}`;
 }
 
 function presetName(format: LineupFormat) {
