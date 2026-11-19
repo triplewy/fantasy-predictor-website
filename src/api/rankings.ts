@@ -72,7 +72,7 @@ export const serverStatKeys: Record<keyof PlayerStats, string> = {
   rushingYards: "rush_yds",
   receptions: "receptions",
   receivingYards: "rec_yds",
-  touchdowns: "player_tds",
+  touchdowns: "tds",
   kickingPoints: "kicking_points",
 };
 
