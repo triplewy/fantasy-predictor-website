@@ -175,7 +175,7 @@ export const scoringSettingFields: {
 export type BreakdownItem = { key: keyof PlayerStats; label: string; points: number; value: number };
 
 export function formatStat(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 
