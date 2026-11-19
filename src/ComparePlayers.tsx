@@ -534,7 +534,7 @@ export function ComparePlayers({
                       key={player.id}
                       className={`points compare-points${winners.has(index) ? " winner" : ""}`}
                     >
-                      {totals[index].toFixed(1)}
+                      {totals[index].toFixed(2)}
                     </td>
                   ))}
                 </tr>
