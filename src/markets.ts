@@ -11,6 +11,7 @@ export const marketInfo: Record<string, { stat: StatKey; label: string }> = {
   player_receptions_alternate: { stat: "receptions", label: "Receptions" },
   player_reception_yds_alternate: { stat: "receivingYards", label: "Receiving yards" },
   player_anytime_td: { stat: "touchdowns", label: "Anytime TD" },
+  player_tds: { stat: "touchdowns", label: "Total TDs" },
   player_tds_over: { stat: "touchdowns", label: "Total TDs (over 0.5 = anytime TD)" },
   player_kicking_points_alternate: { stat: "kickingPoints", label: "Kicking points" },
   // Main (single over/under) lines, combined with the alternates into each stat's curve.
