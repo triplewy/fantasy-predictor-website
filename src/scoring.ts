@@ -242,7 +242,8 @@ export function getPointsBreakdown(
       points: stats.kickingPoints,
     },
   ];
-  return items.filter((item) => item.value !== 0);
+  // Always include touchdowns, even if zero
+  return items.filter((item) => item.value !== 0 || item.key === "touchdowns");
 }
 
 /** Points-allowed tiers: [highest points allowed in the tier, setting]. */
