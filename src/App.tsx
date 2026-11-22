@@ -165,7 +165,7 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
 }
 
 const pageTabs: { page: Page; title: string }[] = [
-  { page: "rankings", title: "rankings" },
+  { page: "rankings", title: "Rankings" },
   { page: "lineup", title: "Lineup optimizer" },
   { page: "compare", title: "Compare players" },
 ];
