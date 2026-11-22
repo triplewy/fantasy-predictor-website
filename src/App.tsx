@@ -194,7 +194,6 @@ function App() {
   });
   const [isExcludedMenuOpen, setIsExcludedMenuOpen] = useState(false);
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
-  const [collapsedTeamGroups, setCollapsedTeamGroups] = useState<Set<string>>(() => new Set());
   const [page, setPage] = useState<Page>(currentPage);
   const session = useSession();
   // The week both projection requests ask for (from/to); shown in the heading.
@@ -210,15 +209,6 @@ function App() {
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
-
-  function toggleTeamGroup(team: string) {
-    setCollapsedTeamGroups((current) => {
-      const next = new Set(current);
-      if (next.has(team)) next.delete(team);
-      else next.add(team);
-      return next;
-    });
-  }
 
   // Projections power the Rankings page, the Lineup optimizer and the Compare page, so
   // they're fetched the first time any of those pages is shown.
@@ -361,46 +351,6 @@ function App() {
         `${player.name} ${player.team} ${player.opponent}`.toLowerCase().includes(query),
       );
   }, [scoredPlayers, position, search]);
-
-  const playerTeamGroups = useMemo(() => {
-    const playersByTeam = new Map<string, RankedPlayer[]>();
-    for (const player of filteredPlayers) {
-      const group = playersByTeam.get(player.team) ?? [];
-      group.push(player);
-      playersByTeam.set(player.team, group);
-    }
-
-    const projectionsByTeam = new Map(teams.map((team) => [team.team, team]));
-    // List every team with a projection, even if none of its players are available this week.
-    // While searching, hide empty groups unless the team itself matches the query.
-    const query = search.trim().toLowerCase();
-    const teamNames = new Set([...projectionsByTeam.keys(), ...playersByTeam.keys()]);
-    return [...teamNames]
-      .filter((team) => {
-        if (!query) return true;
-        if (playersByTeam.has(team)) return true;
-        return team.toLowerCase().includes(query);
-      })
-      .map((team) => {
-        const projection = projectionsByTeam.get(team);
-        const impliedScore =
-          projection && projection.gameTotal !== null && projection.spread !== null
-            ? (projection.gameTotal - projection.spread) / 2
-            : null;
-        return {
-          team,
-          impliedScore,
-          gameTotal: projection?.gameTotal ?? null,
-          spread: projection?.spread ?? null,
-          players: playersByTeam.get(team) ?? [],
-        };
-      })
-      .sort((a, b) => {
-        if (a.impliedScore === null) return b.impliedScore === null ? a.team.localeCompare(b.team) : 1;
-        if (b.impliedScore === null) return -1;
-        return b.impliedScore - a.impliedScore || a.team.localeCompare(b.team);
-      });
-  }, [filteredPlayers, teams, search]);
 
   const filteredTeams = useMemo<RankedTeam[]>(() => {
     const query = search.trim().toLowerCase();
@@ -749,91 +699,56 @@ function App() {
                   <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
-              {playerTeamGroups.map((group) => {
-                const isGroupCollapsed = collapsedTeamGroups.has(group.team);
-                return (
-                  <tbody key={group.team} className="team-group" id={`team-players-${group.team}`}>
-                    <tr className="team-group-row">
-                      <th scope="rowgroup" colSpan={8}>
-                        <button
-                          type="button"
-                          className="team-group-toggle"
-                          aria-expanded={!isGroupCollapsed}
-                          aria-controls={`team-players-${group.team}`}
-                          onClick={() => toggleTeamGroup(group.team)}
-                        >
-                          <span className="team-group-name">{group.team}</span>
-                          <span className="team-group-projections">
-                            {`Projected score ${group.impliedScore === null ? "—" : group.impliedScore.toFixed(1)}`}
-                            {` · Total ${group.gameTotal === null ? "—" : group.gameTotal.toFixed(1)}`}
-                            {` · Spread ${group.spread === null ? "—" : `${group.spread > 0 ? "+" : ""}${group.spread.toFixed(1)}`}`}
-                          </span>
-                          <span className="team-group-chevron" aria-hidden="true">
-                            {isGroupCollapsed ? "▸" : "▾"}
-                          </span>
-                        </button>
-                      </th>
-                    </tr>
-                    {!isGroupCollapsed && group.players.length === 0 && (
-                      <tr className="player-row">
-                        <td colSpan={8}>
-                          <span className="breakdown-empty">No players available</span>
-                        </td>
-                      </tr>
+              {filteredPlayers.map((player) => (
+                <tr key={player.id} className="player-row">
+                  <td className="rank">{player.rank}</td>
+                  <td className="name">{player.name}</td>
+                  <td>{player.position}</td>
+                  <td>{player.team}</td>
+                  <td>{player.opponent}</td>
+                  <td className="points">{player.points.toFixed(2)}</td>
+                  <td className="breakdown">
+                    {player.breakdown.length === 0 ? (
+                      <span className="breakdown-empty">No projected stats</span>
+                    ) : (
+                      <ul className="breakdown-list">
+                        {player.breakdown.map((item) => (
+                          <li key={item.label}>
+                            <span>{item.label}</span>
+                            <span
+                              className={
+                                item.points < 0 ? "breakdown-points negative" : "breakdown-points"
+                              }
+                            >
+                              {formatPoints(item.points)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     )}
-                    {!isGroupCollapsed && group.players.map((player) => (
-                      <tr key={player.id} className="player-row">
-                        <td className="rank">{player.rank}</td>
-                        <td className="name">{player.name}</td>
-                        <td>{player.position}</td>
-                        <td>{player.team}</td>
-                        <td>{player.opponent}</td>
-                        <td className="points">{player.points.toFixed(2)}</td>
-                        <td className="breakdown">
-                          {player.breakdown.length === 0 ? (
-                            <span className="breakdown-empty">No projected stats</span>
-                          ) : (
-                            <ul className="breakdown-list">
-                              {player.breakdown.map((item) => (
-                                <li key={item.label}>
-                                  <span>{item.label}</span>
-                                  <span
-                                    className={
-                                      item.points < 0 ? "breakdown-points negative" : "breakdown-points"
-                                    }
-                                  >
-                                    {formatPoints(item.points)}
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </td>
-                        <td className="action">
-                          <button
-                            type="button"
-                            className="row-action"
-                            aria-label={`compare ${player.name}`}
-                            onClick={() => {
-                              window.location.hash = `#/compare?player=${player.id}`;
-                            }}
-                          >
-                            Compare
-                          </button>
-                          <button
-                            type="button"
-                            className="row-action"
-                            aria-label={`exclude ${player.name}`}
-                            onClick={() => excludePlayer(player)}
-                          >
-                            Exclude
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                );
-              })}
+                  </td>
+                  <td className="action">
+                    <button
+                      type="button"
+                      className="row-action"
+                      aria-label={`compare ${player.name}`}
+                      onClick={() => {
+                        window.location.hash = `#/compare?player=${player.id}`;
+                      }}
+                    >
+                      Compare
+                    </button>
+                    <button
+                      type="button"
+                      className="row-action"
+                      aria-label={`exclude ${player.name}`}
+                      onClick={() => excludePlayer(player)}
+                    >
+                      Exclude
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </table>
             {isLoadingPlayers && (
               <p className="empty-state" role="status">Loading player projections...</p>
@@ -841,7 +756,7 @@ function App() {
             {playersError && (
               <p className="empty-state error-state" role="alert">{playersError}</p>
             )}
-            {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && playerTeamGroups.length === 0 && (
+            {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && (
               <p className="empty-state">No players match your search.</p>
             )}
           </div>
