@@ -165,7 +165,7 @@ function readScoringPreferences(): { format: ScoringFormat; settings: ScoringSet
 }
 
 const pageTabs: { page: Page; title: string }[] = [
-  { page: "rankings", title: "Weekly rankings" },
+  { page: "rankings", title: "rankings" },
   { page: "lineup", title: "Lineup optimizer" },
   { page: "compare", title: "Compare players" },
 ];
@@ -195,6 +195,7 @@ function App() {
   const [isExcludedMenuOpen, setIsExcludedMenuOpen] = useState(false);
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
   const [page, setPage] = useState<Page>(currentPage);
+  const [rankingType, setRankingType] = useState<"weekly" | "season">("weekly");
   const session = useSession();
   // The week both projection requests ask for (from/to); shown in the heading.
   const [queriedWeek] = useState(currentNflWeek);
@@ -506,6 +507,24 @@ function App() {
                 <span className="heading-week"> · Week of {formatQueriedWeek(queriedWeek)}</span>
               </h2>
               <p>{formatWeek(projectionWeek, projectionsUpdatedAt) ?? "Weekly point projections"}</p>
+            </div>
+            <div className="ranking-type-selector" role="group" aria-label="Ranking type">
+              <button
+                type="button"
+                className={`filter${rankingType === "weekly" ? " active" : ""}`}
+                aria-pressed={rankingType === "weekly"}
+                onClick={() => setRankingType("weekly")}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                className={`filter${rankingType === "season" ? " active" : ""}`}
+                aria-pressed={rankingType === "season"}
+                onClick={() => setRankingType("season")}
+              >
+                Season
+              </button>
             </div>
             <label className="search">
               <span>Search</span>
