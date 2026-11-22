@@ -22,7 +22,7 @@ import {
   type ScoringSettingKey,
   type ScoringSettings,
 } from "./scoring";
-import { getPlayerProjections, type Player, type Position, type ProjectionWeek } from "./api/rankings";
+import { getPlayerProjections, getSeasonProjections, type Player, type Position, type ProjectionWeek } from "./api/rankings";
 import { getTeamProjections, type TeamProjection } from "./api/teams";
 
 const positions: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K", "DST"];
@@ -217,6 +217,35 @@ function App() {
   useEffect(() => {
     if (page === "rankings" || page === "compare") setHasRequestedProjections(true);
   }, [page]);
+
+  // Load season projections when rankingType is "season"; weekly projections otherwise.
+  useEffect(() => {
+    if (!hasRequestedProjections) return;
+    const controller = new AbortController();
+
+    const request =
+      rankingType === "season"
+        ? getSeasonProjections("season-2026", controller.signal)
+        : getPlayerProjections(queriedWeek, controller.signal);
+
+    request
+      .then(({ players: loadedPlayers, week, updatedAt }) => {
+        setPlayers(loadedPlayers);
+        setProjectionWeek(week);
+        setProjectionsUpdatedAt(updatedAt);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setPlayersError(
+          error instanceof Error ? error.message : "Could not load player projections.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingPlayers(false);
+      });
+
+    return () => controller.abort();
+  }, [hasRequestedProjections, rankingType, queriedWeek]);
 
   useEffect(() => {
     if (!hasRequestedProjections) return;

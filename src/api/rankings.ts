@@ -262,3 +262,42 @@ export async function getPlayerProjections(
 
   return { week: parseWeek(data.window ?? data.week, data.games), updatedAt: parseUpdatedAt(data), players };
 }
+
+/** Full-season projections for a season (e.g. "season-2026"). */
+export async function getSeasonProjections(
+  season: string,
+  signal?: AbortSignal,
+): Promise<PlayerProjections> {
+  const url = functionUrl("project-futures");
+  url.searchParams.set("season", season);
+  const response = await fetchAsUser(url, signal);
+  if (!response.ok) {
+    throw new Error(`Could not load season projections (server returned ${response.status}).`);
+  }
+
+  const data: unknown = await response.json();
+  if (!isRecord(data) || !Array.isArray(data.players)) {
+    throw new Error("Could not load season projections: the server returned an invalid response.");
+  }
+
+  const players: Player[] = [];
+  let invalidCount = 0;
+  for (const entry of data.players) {
+    const player = parsePlayer(entry);
+    if (player === "unsupported-position") continue;
+    if (!player) {
+      invalidCount += 1;
+      continue;
+    }
+    players.push(player);
+  }
+
+  if (invalidCount > 0) {
+    console.warn(`Skipped ${invalidCount} season projection(s) with invalid data.`);
+  }
+  if (players.length === 0 && invalidCount > 0) {
+    throw new Error("Could not load season projections: the server returned an invalid response.");
+  }
+
+  return { week: parseWeek(data.window ?? data.week, data.games), updatedAt: parseUpdatedAt(data), players };
+}
