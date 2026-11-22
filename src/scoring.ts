@@ -174,8 +174,8 @@ export const scoringSettingFields: {
 
 export type BreakdownItem = { key: keyof PlayerStats; label: string; points: number; value: number };
 
-export function formatStat(value: number, isTD = false) {
-  return Number.isInteger(value) ? String(value) : (isTD ? value.toFixed(2) : value.toFixed(1));
+export function formatStat(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
 
 
@@ -200,7 +200,7 @@ export function getPointsBreakdown(
     {
       key: "passingTouchdowns",
       value: stats.passingTouchdowns,
-      label: `${formatStat(stats.passingTouchdowns, true)} pass TD`,
+      label: `${formatStat(stats.passingTouchdowns)} pass TD`,
       points: stats.passingTouchdowns * settings.passingTouchdown,
     },
     {
@@ -232,7 +232,7 @@ export function getPointsBreakdown(
     {
       key: "touchdowns",
       value: stats.touchdowns,
-      label: `${formatStat(stats.touchdowns, true)} TD`,
+      label: `${formatStat(stats.touchdowns)} TD`,
       points: stats.touchdowns * touchdownPoints,
     },
     {
@@ -340,7 +340,7 @@ export function getTeamPointsBreakdown(stats: TeamStats, settings: ScoringSettin
   if (stats.touchdowns !== null && stats.touchdowns !== 0) {
     items.push({
       key: "touchdowns",
-      label: `${formatStat(stats.touchdowns, true)} TD`,
+      label: `${formatStat(stats.touchdowns)} TD`,
       points: stats.touchdowns * defenseTouchdownPoints(settings),
     });
   }

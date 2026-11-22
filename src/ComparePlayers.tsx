@@ -71,10 +71,6 @@ const breakdownRows: { key: keyof PlayerStats; label: string }[] = [
 /** One color per compared slot, used for the overlay curves and the legend. */
 const seriesColors = ["#2f6f4f", "#b3541e", "#3b5bdb", "#8a4baf", "#0f8b8d"];
 
-function formatSpread(spread: number): string {
-  return `${spread > 0 ? "+" : ""}${spread.toFixed(1)}`;
-}
-
 /** Rows where the lowest value wins; everything else (including points) is higher-is-better. */
 const lowerIsBetterRows = new Set(["interceptions", "spread"]);
 
@@ -557,7 +553,7 @@ export function ComparePlayers({
                       key={player.id}
                       className={`compare-stat${teamTotalWinners.has(index) ? " winner" : ""}`}
                     >
-                      {teamTotals[index] === undefined ? "—" : teamTotals[index].toFixed(1)}
+                      {teamTotals[index] === undefined ? "—" : teamTotals[index].toFixed(2)}
                     </td>
                   ))}
                 </tr>
@@ -574,7 +570,7 @@ export function ComparePlayers({
                       >
                         {team?.gameTotal === null || team?.gameTotal === undefined
                           ? "—"
-                          : team.gameTotal.toFixed(1)}
+                          : team.gameTotal.toFixed(2)}
                       </td>
                     );
                   })}
@@ -590,7 +586,7 @@ export function ComparePlayers({
                       >
                         {team?.spread === null || team?.spread === undefined
                           ? "—"
-                          : formatSpread(team.spread)}
+                          : `${team.spread > 0 ? "+" : ""}${team.spread.toFixed(2)}`}
                       </td>
                     );
                   })}
