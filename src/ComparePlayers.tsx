@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { getAllPlayers, type ListedPlayer } from "./api/players";
-import type { Player, PlayerMarket, PlayerStats } from "./api/rankings";
+import type { Player, PlayerMarket, PlayerStats, Position } from "./api/rankings";
 import type { TeamProjection } from "./api/teams";
 import { teamCode } from "./teams";
 import { formatStat, getPointsBreakdown, type ScoringSettings } from "./scoring";
@@ -13,6 +13,17 @@ const maxPlayers = 5;
 const storageKey = "fantasy-compare-players";
 
 type SavedPlayer = Pick<Player, "id" | "name" | "position" | "team" | "opponent">;
+
+export type ComparedPlayer = {
+  id: string;
+  name: string;
+  position: Position;
+  team: string;
+  opponent: string;
+  stats?: PlayerStats;
+  markets?: PlayerMarket[];
+  hasProjection: boolean;
+};
 
 function isSavedPlayer(value: unknown): value is SavedPlayer {
   if (typeof value !== "object" || value === null) return false;
@@ -198,13 +209,33 @@ export function ComparePlayers({
     [teams],
   );
 
-  // Stats and markets come only from live /project-players data; saved picks without a
-  // projection this week are dropped once projections load.
-  const compared = useMemo(
+  // Saved picks are retained even if they don't have a projection this week,
+  // allowing users to view them and remove them from comparison.
+  const compared = useMemo<ComparedPlayer[]>(
     () =>
-      savedPlayers
-        .map((saved) => projectionsById.get(saved.id))
-        .filter((player): player is Player => player !== undefined),
+      savedPlayers.map((saved) => {
+        const projection = projectionsById.get(saved.id);
+        if (projection) {
+          return {
+            id: projection.id,
+            name: projection.name,
+            position: projection.position,
+            team: projection.team,
+            opponent: projection.opponent,
+            stats: projection.stats,
+            markets: projection.markets,
+            hasProjection: true,
+          };
+        }
+        return {
+          id: saved.id,
+          name: saved.name,
+          position: saved.position as Position,
+          team: saved.team,
+          opponent: saved.opponent,
+          hasProjection: false,
+        };
+      }),
     [savedPlayers, projectionsById],
   );
   const comparedIdList = useMemo(() => compared.map((player) => player.id), [compared]);
@@ -260,6 +291,7 @@ export function ComparePlayers({
   const breakdowns = useMemo(
     () =>
       compared.map((player) => {
+        if (!player.stats) return new Map<keyof PlayerStats, { key: keyof PlayerStats; label: string; points: number; value: number }>();
         const items = getPointsBreakdown(player.stats, player.position, settings);
         return new Map(items.map((item) => [item.key, item]));
       }),
@@ -268,10 +300,11 @@ export function ComparePlayers({
 
   const totals = useMemo(
     () =>
-      breakdowns.map((breakdown) =>
-        [...breakdown.values()].reduce((sum, item) => sum + item.points, 0),
-      ),
-    [breakdowns],
+      compared.map((player, index) => {
+        if (!player.hasProjection || !player.stats) return undefined;
+        return [...breakdowns[index].values()].reduce((sum, item) => sum + item.points, 0);
+      }),
+    [compared, breakdowns],
   );
 
   // Only show rows where at least one compared player has a non-zero contribution.
@@ -316,10 +349,10 @@ export function ComparePlayers({
   const marketOverlays = useMemo(() => {
     const byMarket = new Map<
       string,
-      { label: string; stat: keyof PlayerStats; entries: { player: Player; market: PlayerMarket }[] }
+      { label: string; stat: keyof PlayerStats; entries: { player: ComparedPlayer; market: PlayerMarket }[] }
     >();
     compared.forEach((player) => {
-      for (const market of player.markets) {
+      for (const market of player.markets ?? []) {
         const info = marketInfo[market.market];
         if (!info) continue;
         const entry = byMarket.get(market.market) ?? { label: info.label, stat: info.stat, entries: [] };
@@ -338,7 +371,7 @@ export function ComparePlayers({
           color: seriesColors[compared.findIndex((comparedPlayer) => comparedPlayer.id === player.id) % seriesColors.length],
           lineValues: playerMarket.line_values,
           probabilities: playerMarket.fair_over_probabilities,
-          projection: player.stats[stat],
+          projection: player.stats?.[stat] ?? 0,
         })),
       }))
       .sort((a, b) => {
@@ -473,21 +506,11 @@ export function ComparePlayers({
         )}
       </div>
 
-      {!isLoading && savedPlayers.length > compared.length && (
-        <p className="lineup-note">
-          {savedPlayers.length - compared.length === 1
-            ? "A saved player has no projection this week and was hidden."
-            : `${savedPlayers.length - compared.length} saved players have no projection this week and were hidden.`}
-        </p>
-      )}
-
       {compared.length === 0 ? (
         <p className="empty-state">
           {isLoading
             ? "Loading player projections…"
-            : savedPlayers.length > 0
-              ? "None of the saved players have a projection this week."
-              : "Search above to add players to compare."}
+            : "Search above to add players to compare."}
         </p>
       ) : (
         <>
@@ -509,6 +532,9 @@ export function ComparePlayers({
                       <div className="compare-player-meta">
                         {player.position} · {player.team}
                         {player.opponent ? ` ${player.opponent}` : ""}
+                        {!player.hasProjection && !isLoading && (
+                          <span className="compare-no-projection"> (No projection)</span>
+                        )}
                       </div>
                       <button
                         type="button"
@@ -525,14 +551,17 @@ export function ComparePlayers({
               <tbody>
                 <tr>
                   <th scope="row">Proj. points</th>
-                  {compared.map((player, index) => (
-                    <td
-                      key={player.id}
-                      className={`points compare-points${winners.has(index) ? " winner" : ""}`}
-                    >
-                      {totals[index].toFixed(2)}
-                    </td>
-                  ))}
+                  {compared.map((player, index) => {
+                    const total = totals[index];
+                    return (
+                      <td
+                        key={player.id}
+                        className={`points compare-points${winners.has(index) ? " winner" : ""}`}
+                      >
+                        {total === undefined ? "—" : total.toFixed(2)}
+                      </td>
+                    );
+                  })}
                 </tr>
                 <tr>
                   <th scope="row">

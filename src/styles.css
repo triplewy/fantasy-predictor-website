@@ -1323,6 +1323,11 @@ td.breakdown {
   font-weight: 400;
 }
 
+.compare-no-projection {
+  color: #8a928c;
+  font-style: italic;
+}
+
 .compare-points {
   font-size: 15px;
   font-variant-numeric: tabular-nums;
