@@ -1,13 +1,16 @@
 /**
  * Hash routing. The part after "#" never reaches the server, so every URL loads index.html
  * and works on GitHub Pages (refresh, bookmarks, shared links) without server rewrites.
- *   #/rankings              Rankings, all positions
- *   #/rankings/qb … /dst    Rankings filtered to a position tab (dst = D/ST)
- *   #/lineup-optimizer      Lineup optimizer
- *   #/compare               Compare players
- *   #/compare?player=<id>   Compare players, adding that player on arrival
+ *   #/rankings/weekly              Weekly rankings, all positions (also #/rankings)
+ *   #/rankings/weekly/qb … /dst    Weekly rankings filtered to a position tab (dst = D/ST)
+ *   #/rankings/season              Season rankings, all positions
+ *   #/rankings/season/qb … /dst    Season rankings filtered to a position tab (dst = D/ST)
+ *   #/lineup-optimizer             Lineup optimizer
+ *   #/compare                      Compare players
+ *   #/compare?player=<id>          Compare players, adding that player on arrival
  */
 export type Page = "rankings" | "lineup" | "compare";
+export type RankingType = "weekly" | "season";
 export type PositionFilter = "ALL" | "QB" | "RB" | "WR" | "TE" | "FLEX" | "K" | "DST";
 
 const positionSlugs: Record<PositionFilter, string> = {
@@ -45,7 +48,7 @@ function isRouteHash(hash: string) {
   return hash === "" || hash === "#" || hash.startsWith("#/");
 }
 
-type Route = { page: Page; position: PositionFilter };
+type Route = { page: Page; rankingType: RankingType; position: PositionFilter };
 
 /** The query string portion of a hash ("" when absent), e.g. "?player=123". */
 function queryFor(hash: string): string {
@@ -53,24 +56,26 @@ function queryFor(hash: string): string {
   return index === -1 ? "" : hash.slice(index);
 }
 
-/** Parse a route hash (case-insensitive). Unknown routes and positions fall back to Rankings/All. */
+/** Parse a route hash (case-insensitive). Unknown routes and positions fall back to Weekly Rankings/All. */
 function parseHash(hash: string): Route {
   const lower = hash.split("?")[0].toLowerCase();
-  if (lower === pageHashes.lineup) return { page: "lineup", position: "ALL" };
-  if (lower === pageHashes.compare) return { page: "compare", position: "ALL" };
-  const rankings = lower.match(/^#\/rankings(?:\/([a-z]+))?\/?$/);
+  if (lower === pageHashes.lineup) return { page: "lineup", rankingType: "weekly", position: "ALL" };
+  if (lower === pageHashes.compare) return { page: "compare", rankingType: "weekly", position: "ALL" };
+  const rankings = lower.match(/^#\/rankings(?:\/(weekly|season))?(?:\/([a-z]+))?\/?$/);
   if (rankings) {
-    const slug = rankings[1] ?? "";
+    const rankingType: RankingType = rankings[1] === "season" ? "season" : "weekly";
+    const slug = rankings[2] ?? "";
     const position = (Object.keys(positionSlugs) as PositionFilter[]).find((key) => positionSlugs[key] === slug);
-    return { page: "rankings", position: position ?? "ALL" };
+    return { page: "rankings", rankingType, position: position ?? "ALL" };
   }
-  return { page: legacyHashes[lower] ?? "rankings", position: "ALL" };
+  return { page: legacyHashes[lower] ?? "rankings", rankingType: "weekly", position: "ALL" };
 }
 
-function hashFor({ page, position }: Route): string {
+function hashFor({ page, rankingType, position }: Route): string {
   if (page === "lineup") return pageHashes.lineup;
   if (page === "compare") return pageHashes.compare;
-  return position === "ALL" ? pageHashes.rankings : `${pageHashes.rankings}/${positionSlugs[position]}`;
+  const base = `${pageHashes.rankings}/${rankingType}`;
+  return position === "ALL" ? base : `${base}/${positionSlugs[position]}`;
 }
 
 /** Canonical hash for a route, preserving the ?player= query on #/compare. */
@@ -96,14 +101,19 @@ export function currentPage(): Page {
   return pageForHash(window.location.hash);
 }
 
+/** The Rankings type in the URL ("weekly" when none, or on another page). */
+export function currentRankingType(): RankingType {
+  return parseHash(window.location.hash).rankingType;
+}
+
 /** The Rankings position tab in the URL ("ALL" when none, or on another page). */
 export function currentRankingsPosition(): PositionFilter {
   return parseHash(window.location.hash).position;
 }
 
-/** URL for a Rankings position tab, e.g. "#/rankings/wr". */
-export function rankingsHref(position: PositionFilter): string {
-  return hashFor({ page: "rankings", position });
+/** URL for a Rankings tab, e.g. "#/rankings/weekly/wr" or "#/rankings/season". */
+export function rankingsHref(position: PositionFilter, rankingType: RankingType = "weekly"): string {
+  return hashFor({ page: "rankings", rankingType, position });
 }
 
 function replaceHash(hash: string) {

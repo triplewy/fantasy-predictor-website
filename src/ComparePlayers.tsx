@@ -524,7 +524,7 @@ export function ComparePlayers({
               </thead>
               <tbody>
                 <tr>
-                  <th scope="row">Projected points</th>
+                  <th scope="row">Proj. points</th>
                   {compared.map((player, index) => (
                     <td
                       key={player.id}

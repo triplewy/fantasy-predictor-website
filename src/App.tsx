@@ -2,17 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { signOut, useSession } from "./AuthGate";
 import { ComparePlayers } from "./ComparePlayers";
 import { LineupOptimizer } from "./LineupOptimizer";
-import { currentNflWeek } from "./nflWeek";
+import { currentNflWeek, getWeeksRemaining } from "./nflWeek";
 import {
   currentPage,
   currentRankingsPosition,
+  currentRankingType,
   pageHref,
   rankingsHref,
   type Page,
   type PositionFilter,
+  type RankingType,
 } from "./routes";
 import { readStorageJson, removeStorageItem, writeStorageJson } from "./storage";
 import {
+  formatStat,
   getPointsBreakdown,
   scoringPresets,
   scoringSections,
@@ -22,7 +25,19 @@ import {
   type ScoringSettingKey,
   type ScoringSettings,
 } from "./scoring";
-import { getPlayerProjections, getSeasonProjections, type Player, type Position, type ProjectionWeek } from "./api/rankings";
+import {
+  getPlayerProjections,
+  getSeasonProjections,
+  getSeasonStatsBreakdown,
+  type Player,
+  type Position,
+  type ProjectionWeek,
+  type SeasonBreakdownItem,
+  type SeasonPlayer,
+  calculatePerWeekProjectedTotal,
+  calculateSeasonProjectedTotal,
+  calculateSeasonStatsTotal,
+} from "./api/rankings";
 import { getTeamProjections, type TeamProjection } from "./api/teams";
 
 const positions: PositionFilter[] = ["ALL", "QB", "RB", "WR", "TE", "FLEX", "K", "DST"];
@@ -32,7 +47,15 @@ function positionLabel(item: PositionFilter) {
 }
 const excludedPositions: ("ALL" | Position)[] = ["ALL", "QB", "RB", "WR", "TE", "K"];
 
-type RankedPlayer = Player & { rank: number; points: number; breakdown: BreakdownItem[] };
+type RankedPlayer = (Player | SeasonPlayer) & {
+  rank: number;
+  points: number;
+  breakdown: BreakdownItem[];
+  seasonStatsBreakdown?: SeasonBreakdownItem[];
+  seasonStatsTotal?: number;
+  seasonProjectedTotal?: number;
+  perWeekProjectedTotal?: number;
+};
 type RankedTeam = TeamProjection & { rank: number; projectedPointsAllowed: number | null };
 
 /**
@@ -171,13 +194,18 @@ const pageTabs: { page: Page; title: string }[] = [
 ];
 
 function App() {
-  // The Rankings position tab lives in the URL (#/rankings/wr); see routes.ts.
+  // The Rankings type and position tab live in the URL (#/rankings/weekly/wr); see routes.ts.
+  const [rankingType, setRankingTypeState] = useState<RankingType>(currentRankingType);
   const [position, setPositionState] = useState<PositionFilter>(currentRankingsPosition);
   const setPosition = (next: PositionFilter) => {
-    window.location.hash = rankingsHref(next);
+    window.location.hash = rankingsHref(next, rankingType);
+  };
+  const setRankingType = (next: RankingType) => {
+    window.location.hash = rankingsHref(position, next);
   };
   const [search, setSearch] = useState("");
   const [players, setPlayers] = useState<Player[]>([]);
+  const [seasonPlayers, setSeasonPlayers] = useState<SeasonPlayer[]>([]);
   const [projectionWeek, setProjectionWeek] = useState<ProjectionWeek | null>(null);
   const [projectionsUpdatedAt, setProjectionsUpdatedAt] = useState<Date | null>(null);
   const [isLoadingPlayers, setIsLoadingPlayers] = useState(true);
@@ -195,17 +223,20 @@ function App() {
   const [isExcludedMenuOpen, setIsExcludedMenuOpen] = useState(false);
   const [excludedPosition, setExcludedPosition] = useState<"ALL" | Position>("ALL");
   const [page, setPage] = useState<Page>(currentPage);
-  const [rankingType, setRankingType] = useState<"weekly" | "season">("weekly");
   const session = useSession();
   // The week both projection requests ask for (from/to); shown in the heading.
   const [queriedWeek] = useState(currentNflWeek);
+  const weeksRemaining = useMemo(() => getWeeksRemaining(new Date(), "season-2026"), []);
 
   // Hash routing (see routes.ts): follow tab clicks, back/forward and redirects.
   useEffect(() => {
     const onHashChange = () => {
       setPage(currentPage());
-      // Leaving Rankings keeps the last tab, so returning to Rankings restores it.
-      if (currentPage() === "rankings") setPositionState(currentRankingsPosition());
+      // Leaving Rankings keeps the last tabs, so returning to Rankings restores them.
+      if (currentPage() === "rankings") {
+        setRankingTypeState(currentRankingType());
+        setPositionState(currentRankingsPosition());
+      }
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -218,35 +249,8 @@ function App() {
     if (page === "rankings" || page === "compare") setHasRequestedProjections(true);
   }, [page]);
 
-  // Load season projections when rankingType is "season"; weekly projections otherwise.
-  useEffect(() => {
-    if (!hasRequestedProjections) return;
-    const controller = new AbortController();
-
-    const request =
-      rankingType === "season"
-        ? getSeasonProjections("season-2026", controller.signal)
-        : getPlayerProjections(queriedWeek, controller.signal);
-
-    request
-      .then(({ players: loadedPlayers, week, updatedAt }) => {
-        setPlayers(loadedPlayers);
-        setProjectionWeek(week);
-        setProjectionsUpdatedAt(updatedAt);
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setPlayersError(
-          error instanceof Error ? error.message : "Could not load player projections.",
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoadingPlayers(false);
-      });
-
-    return () => controller.abort();
-  }, [hasRequestedProjections, rankingType, queriedWeek]);
-
+  // Load weekly projections once; season projections are fetched separately when the
+  // Season tab is selected so switching tabs doesn't refetch the weekly data.
   useEffect(() => {
     if (!hasRequestedProjections) return;
     const controller = new AbortController();
@@ -268,7 +272,39 @@ function App() {
       });
 
     return () => controller.abort();
-  }, [hasRequestedProjections]);
+  }, [hasRequestedProjections, queriedWeek]);
+
+  const [hasRequestedSeason, setHasRequestedSeason] = useState(false);
+  const [isLoadingSeason, setIsLoadingSeason] = useState(false);
+  const [seasonError, setSeasonError] = useState<string | null>(null);
+  const [seasonUpdatedAt, setSeasonUpdatedAt] = useState<Date | null>(null);
+  useEffect(() => {
+    if (page === "rankings" && rankingType === "season") setHasRequestedSeason(true);
+  }, [page, rankingType]);
+
+  useEffect(() => {
+    if (!hasRequestedSeason) return;
+    const controller = new AbortController();
+    setIsLoadingSeason(true);
+    setSeasonError(null);
+
+    getSeasonProjections("season-2026", controller.signal)
+      .then(({ players: loadedPlayers, updatedAt }) => {
+        setSeasonPlayers(loadedPlayers);
+        setSeasonUpdatedAt(updatedAt);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setSeasonError(
+          error instanceof Error ? error.message : "Could not load season projections.",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingSeason(false);
+      });
+
+    return () => controller.abort();
+  }, [hasRequestedSeason]);
 
   // Team game projections provide implied team scores for all weekly player groups.
   const isTeamTab = page === "rankings" && position === "DST";
@@ -323,7 +359,7 @@ function App() {
     writeStorageJson(excludedPlayersStorageKey, excludedPlayers);
   }, [excludedPlayers]);
 
-  function excludePlayer({ id, name, position, team }: Player) {
+  function excludePlayer({ id, name, position, team }: Player | SeasonPlayer) {
     setExcludedPlayers((current) =>
       current.some((item) => item.id === id) ? current : [...current, { id, name, position, team }],
     );
@@ -351,15 +387,37 @@ function App() {
   // Sorted by projected points; ranks are assigned per position tab below.
   const scoredPlayers = useMemo(
     () =>
-      players
+      (rankingType === "season" ? seasonPlayers : players)
         .filter((player) => !excludedSet.has(player.id))
         .map((player) => {
+          if ("totalSeasonStats" in player) {
+            // For Season Projections, show total season projections breakdown
+            const breakdown = getPointsBreakdown(player.totalSeasonStats, player.position, settings);
+            const seasonStatsBreakdown = getSeasonStatsBreakdown(player, settings);
+            const seasonStatsTotal = seasonStatsBreakdown.reduce((sum, item) => sum + item.points, 0);
+            const seasonProjectedTotal = breakdown.reduce((sum, item) => sum + item.points, 0);
+            // RoS projected total points is used for ranking and the RoS Projected Total column
+            const rosBreakdown = getPointsBreakdown(player.stats, player.position, settings);
+            const points = rosBreakdown.reduce((total, item) => total + item.points, 0);
+            const perWeekProjectedTotal = weeksRemaining > 0 ? points / weeksRemaining : 0;
+
+            return {
+              ...player,
+              breakdown,
+              points,
+              seasonStatsBreakdown,
+              seasonStatsTotal,
+              seasonProjectedTotal,
+              perWeekProjectedTotal,
+            };
+          }
+
           const breakdown = getPointsBreakdown(player.stats, player.position, settings);
           const points = breakdown.reduce((total, item) => total + item.points, 0);
           return { ...player, breakdown, points };
         })
         .sort((a, b) => b.points - a.points),
-    [players, settings, excludedSet],
+    [players, seasonPlayers, rankingType, settings, excludedSet, weeksRemaining],
   );
 
   const visibleExcludedPlayers = excludedPlayers.filter(
@@ -378,7 +436,7 @@ function App() {
       )
       .map((player, index) => ({ ...player, rank: index + 1 }))
       .filter((player) =>
-        `${player.name} ${player.team} ${player.opponent}`.toLowerCase().includes(query),
+        `${player.name} ${player.team} ${"opponent" in player ? player.opponent : ""}`.toLowerCase().includes(query),
       );
   }, [scoredPlayers, position, search]);
 
@@ -494,8 +552,8 @@ function App() {
           {pageTabs.map((tab) => (
             <a
               key={tab.page}
-              // Rankings links back to the last position tab viewed.
-              href={tab.page === "rankings" ? rankingsHref(position) : pageHref(tab.page)}
+              // Rankings links back to the last ranking type and position tab viewed.
+              href={tab.page === "rankings" ? rankingsHref(position, rankingType) : pageHref(tab.page)}
               className={page === tab.page ? "page-tab active" : "page-tab"}
               aria-current={page === tab.page ? "page" : undefined}
             >
@@ -533,9 +591,17 @@ function App() {
             <div>
               <h2>
                 {isTeamTab ? "D/ST" : "All players"}
-                <span className="heading-week"> · Week of {formatQueriedWeek(queriedWeek)}</span>
+                <span className="heading-week">
+                  {rankingType === "season" ? " · 2026 Rest of Season" : ` · Week of ${formatQueriedWeek(queriedWeek)}`}
+                </span>
               </h2>
-              <p>{formatWeek(projectionWeek, projectionsUpdatedAt) ?? "Weekly point projections"}</p>
+              <p>
+                {rankingType === "season"
+                  ? (seasonUpdatedAt
+                      ? `Updated ${formatUpdatedAt(seasonUpdatedAt)} · ${weeksRemaining} weeks remaining`
+                      : `Rest-of-season point projections · ${weeksRemaining} weeks remaining`)
+                  : (formatWeek(projectionWeek, projectionsUpdatedAt) ?? "Weekly point projections")}
+              </p>
             </div>
             <div className="ranking-type-selector" role="group" aria-label="Ranking type">
               <button
@@ -676,9 +742,13 @@ function App() {
                   ? isLoadingTeams
                     ? "Loading teams..."
                     : `${filteredTeams.length} teams`
-                  : isLoadingPlayers
-                    ? "Loading players..."
-                    : `${filteredPlayers.length} players`}
+                  : rankingType === "season"
+                    ? isLoadingSeason
+                      ? "Loading players..."
+                      : `${filteredPlayers.length} players`
+                    : isLoadingPlayers
+                      ? "Loading players..."
+                      : `${filteredPlayers.length} players`}
               </span>
             </div>
           </div>
@@ -741,25 +811,43 @@ function App() {
                   <th scope="col">Player</th>
                   <th scope="col">Pos</th>
                   <th scope="col">Team</th>
-                  <th scope="col">Opponent</th>
-                  <th scope="col" className="points-heading">Projected points</th>
-                  <th scope="col">Breakdown</th>
+                  {rankingType === "season" && <th scope="col" className="points-heading">Season Proj. Total</th>}
+                  {rankingType === "season" && <th scope="col" className="points-heading">Season Stats Total</th>}
+                  {rankingType !== "season" && <th scope="col">Opponent</th>}
+                  <th scope="col" className="points-heading">
+                    {rankingType === "season" ? "RoS Proj. Total" : "Proj. points"}
+                  </th>
+                  {rankingType === "season" && <th scope="col" className="points-heading col-highlight">Per-Week Proj. Total</th>}
+                  <th scope="col" className="breakdown-heading">{rankingType === "season" ? "Season Projections" : "Breakdown"}</th>
+                  {rankingType === "season" && <th scope="col" className="breakdown-heading">Season Stats</th>}
                   <th scope="col" className="action-heading"><span className="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
-              {filteredPlayers.map((player) => (
-                <tr key={player.id} className="player-row">
+              <tbody>
+                {filteredPlayers.map((player) => (
+                  <tr key={player.id} className="player-row">
                   <td className="rank">{player.rank}</td>
                   <td className="name">{player.name}</td>
                   <td>{player.position}</td>
                   <td>{player.team}</td>
-                  <td>{player.opponent}</td>
+                  {rankingType === "season" && "seasonToDateStats" in player && (
+                    <td className="points">{(player.seasonProjectedTotal ?? calculateSeasonProjectedTotal(player, settings)).toFixed(2)}</td>
+                  )}
+                  {rankingType === "season" && "seasonToDateStats" in player && (
+                    <td className="points">{(player.seasonStatsTotal ?? calculateSeasonStatsTotal(player, settings)).toFixed(2)}</td>
+                  )}
+                  {rankingType !== "season" && <td>{"opponent" in player ? player.opponent : ""}</td>}
                   <td className="points">{player.points.toFixed(2)}</td>
+                  {rankingType === "season" && "seasonToDateStats" in player && (
+                    <td className="points col-highlight">
+                      {(player.perWeekProjectedTotal ?? calculatePerWeekProjectedTotal(player, settings, weeksRemaining)).toFixed(2)}
+                    </td>
+                  )}
                   <td className="breakdown">
                     {player.breakdown.length === 0 ? (
                       <span className="breakdown-empty">No projected stats</span>
                     ) : (
-                      <ul className="breakdown-list">
+                      <ul className={`breakdown-list${rankingType === "season" ? " season-breakdown-list" : ""}`}>
                         {player.breakdown.map((item) => (
                           <li key={item.label}>
                             <span>{item.label}</span>
@@ -775,6 +863,28 @@ function App() {
                       </ul>
                     )}
                   </td>
+                  {rankingType === "season" && (
+                    <td className="breakdown">
+                      {"seasonStatsBreakdown" in player && player.seasonStatsBreakdown && player.seasonStatsBreakdown.length > 0 ? (
+                        <ul className="breakdown-list season-breakdown-list">
+                          {player.seasonStatsBreakdown.map((stat) => (
+                            <li key={stat.market}>
+                              <span>{formatStat(stat.value)} {stat.label}</span>
+                              <span
+                                className={
+                                  stat.points < 0 ? "breakdown-points negative" : "breakdown-points"
+                                }
+                              >
+                                {formatPoints(stat.points)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <span className="breakdown-empty">No season-to-date stats</span>
+                      )}
+                    </td>
+                  )}
                   <td className="action">
                     <button
                       type="button"
@@ -797,15 +907,32 @@ function App() {
                   </td>
                 </tr>
               ))}
+              </tbody>
             </table>
-            {isLoadingPlayers && (
-              <p className="empty-state" role="status">Loading player projections...</p>
-            )}
-            {playersError && (
-              <p className="empty-state error-state" role="alert">{playersError}</p>
-            )}
-            {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && (
-              <p className="empty-state">No players match your search.</p>
+            {rankingType === "season" ? (
+              <>
+                {isLoadingSeason && (
+                  <p className="empty-state" role="status">Loading season projections...</p>
+                )}
+                {seasonError && (
+                  <p className="empty-state error-state" role="alert">{seasonError}</p>
+                )}
+                {!isLoadingSeason && !seasonError && filteredPlayers.length === 0 && (
+                  <p className="empty-state">No players match your search.</p>
+                )}
+              </>
+            ) : (
+              <>
+                {isLoadingPlayers && (
+                  <p className="empty-state" role="status">Loading player projections...</p>
+                )}
+                {playersError && (
+                  <p className="empty-state error-state" role="alert">{playersError}</p>
+                )}
+                {!isLoadingPlayers && !playersError && filteredPlayers.length === 0 && (
+                  <p className="empty-state">No players match your search.</p>
+                )}
+              </>
             )}
           </div>
           )}

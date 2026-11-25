@@ -64,3 +64,42 @@ export function currentNflWeek(now: Date = new Date()): { from: Date; to: Date }
     to: easternTimeToUtc(endDay.getUTCFullYear(), endDay.getUTCMonth() + 1, endDay.getUTCDate(), weekStartHour),
   };
 }
+
+export const NFL_REGULAR_SEASON_WEEKS = 18;
+
+/**
+ * Start of Week 1 for an NFL season (Tuesday 4:00 AM Eastern before the first Thursday after Labor Day).
+ * Labor Day is the first Monday in September.
+ */
+export function nflSeasonWeek1Start(year: number): Date {
+  const sep1 = new Date(Date.UTC(year, 8, 1));
+  const sep1Weekday = sep1.getUTCDay();
+  const firstMondayDate = 1 + ((1 - sep1Weekday + 7) % 7);
+  const week1TuesdayDate = firstMondayDate + 1;
+  return easternTimeToUtc(year, 9, week1TuesdayDate, weekStartHour);
+}
+
+/**
+ * Returns the current 1-based NFL week number for the given season year.
+ * Returns 1 if before Week 1, and 18 if after Week 18.
+ */
+export function currentNflWeekNumber(now: Date = new Date(), year?: number): number {
+  const currentWeek = currentNflWeek(now);
+  const seasonYear = year ?? easternParts(currentWeek.from).year;
+  const week1 = nflSeasonWeek1Start(seasonYear);
+  const diffMs = currentWeek.from.getTime() - week1.getTime();
+  const weekIndex = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+  const weekNum = weekIndex + 1;
+  return Math.max(1, Math.min(NFL_REGULAR_SEASON_WEEKS, weekNum));
+}
+
+/**
+ * Number of NFL weeks still available in the regular season (including the current week).
+ * E.g. at Week 12, there are 7 weeks still available (Weeks 12 through 18).
+ */
+export function getWeeksRemaining(now: Date = new Date(), season: string = "season-2026"): number {
+  const match = season.match(/\d{4}/);
+  const year = match ? Number(match[0]) : undefined;
+  const weekNum = currentNflWeekNumber(now, year);
+  return Math.max(1, NFL_REGULAR_SEASON_WEEKS - weekNum + 1);
+}

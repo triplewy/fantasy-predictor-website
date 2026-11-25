@@ -83,9 +83,32 @@ input:focus-visible {
 
 
 .page {
-  width: min(100% - 40px, 920px);
+  width: 100%;
+  max-width: 1680px;
   margin: 0 auto;
-  padding: 20px 0 28px;
+  padding: 20px 24px 32px;
+  box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+  .page {
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page {
+    padding-left: 60px;
+    padding-right: 60px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .page {
+    padding-left: 64px;
+    padding-right: 64px;
+  }
 }
 
 .eyebrow {
@@ -495,11 +518,29 @@ tbody tr:hover {
 .points-heading,
 .points {
   text-align: right;
+  padding-left: 14px;
+  padding-right: 14px;
 }
 
 .points {
   color: #28312b;
   font-weight: 600;
+}
+
+th.col-highlight {
+  background: #edf5ef;
+  color: #1e3a27;
+  font-weight: 700;
+}
+
+td.col-highlight {
+  background: #f4f8f5;
+  color: #1e3a27;
+  font-weight: 700;
+}
+
+tbody tr:hover td.col-highlight {
+  background: #e9f2eb;
 }
 
 .excluded-dropdown {
@@ -570,11 +611,25 @@ tbody tr:hover {
   margin-left: auto;
 }
 
+.breakdown-heading,
 .breakdown {
+  width: 280px;
   min-width: 240px;
+  padding-left: 16px;
+  padding-right: 16px;
+  white-space: normal;
+  box-sizing: border-box;
+}
+
+th.breakdown-heading {
+  height: 38px;
+  vertical-align: middle;
+}
+
+td.breakdown {
   padding-top: 8px;
   padding-bottom: 8px;
-  white-space: normal;
+  vertical-align: middle;
 }
 
 .breakdown-list {
@@ -584,6 +639,18 @@ tbody tr:hover {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.season-breakdown-list {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.season-breakdown-list li {
+  display: inline-flex;
+  width: fit-content;
 }
 
 .breakdown-list li {

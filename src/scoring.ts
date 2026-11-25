@@ -183,63 +183,102 @@ export function yardagePoints(yards: number, points: number, per: number) {
   return per > 0 ? (yards / per) * points : 0;
 }
 
+export function getStatPoints(
+  statKey: keyof PlayerStats | string,
+  value: number,
+  position: Position,
+  settings: ScoringSettings,
+): number {
+  const touchdownPoints =
+    position === "WR" || position === "TE" ? settings.receivingTouchdown : settings.rushingTouchdown;
+  switch (statKey) {
+    case "passingYards":
+    case "player_pass_yds":
+      return yardagePoints(value, settings.passingYards, settings.passingYardsPer);
+    case "passingTouchdowns":
+    case "player_pass_tds":
+      return value * settings.passingTouchdown;
+    case "interceptions":
+    case "player_pass_int":
+      return value * settings.interception;
+    case "rushingYards":
+    case "player_rush_yds":
+      return yardagePoints(value, settings.rushingYards, settings.rushingYardsPer);
+    case "player_rush_tds":
+      return value * settings.rushingTouchdown;
+    case "player_rec_tds":
+      return value * settings.receivingTouchdown;
+    case "receptions":
+    case "player_receptions":
+      return value * (settings.reception + (position === "TE" ? settings.tightEndReceptionBonus : 0));
+    case "receivingYards":
+    case "player_rec_yds":
+    case "player_reception_yds":
+      return yardagePoints(value, settings.receivingYards, settings.receivingYardsPer);
+    case "touchdowns":
+    case "player_tds":
+      return value * touchdownPoints;
+    case "kickingPoints":
+    case "player_kicking_points":
+      return value;
+    default:
+      return 0;
+  }
+}
+
 export function getPointsBreakdown(
   stats: PlayerStats,
   position: Position,
   settings: ScoringSettings,
 ): BreakdownItem[] {
-  const touchdownPoints =
-    position === "WR" || position === "TE" ? settings.receivingTouchdown : settings.rushingTouchdown;
   const items: (BreakdownItem & { value: number })[] = [
     {
       key: "passingYards",
       value: stats.passingYards,
       label: `${formatStat(stats.passingYards)} pass yds`,
-      points: yardagePoints(stats.passingYards, settings.passingYards, settings.passingYardsPer),
+      points: getStatPoints("passingYards", stats.passingYards, position, settings),
     },
     {
       key: "passingTouchdowns",
       value: stats.passingTouchdowns,
       label: `${formatStat(stats.passingTouchdowns)} pass TD`,
-      points: stats.passingTouchdowns * settings.passingTouchdown,
+      points: getStatPoints("passingTouchdowns", stats.passingTouchdowns, position, settings),
     },
     {
       key: "interceptions",
       value: stats.interceptions,
       label: `${formatStat(stats.interceptions)} INT`,
-      points: stats.interceptions * settings.interception,
+      points: getStatPoints("interceptions", stats.interceptions, position, settings),
     },
     {
       key: "rushingYards",
       value: stats.rushingYards,
       label: `${formatStat(stats.rushingYards)} rush yds`,
-      points: yardagePoints(stats.rushingYards, settings.rushingYards, settings.rushingYardsPer),
+      points: getStatPoints("rushingYards", stats.rushingYards, position, settings),
     },
     {
       key: "receptions",
       value: stats.receptions,
       label: `${formatStat(stats.receptions)} rec`,
-      points:
-        stats.receptions *
-        (settings.reception + (position === "TE" ? settings.tightEndReceptionBonus : 0)),
+      points: getStatPoints("receptions", stats.receptions, position, settings),
     },
     {
       key: "receivingYards",
       value: stats.receivingYards,
       label: `${formatStat(stats.receivingYards)} rec yds`,
-      points: yardagePoints(stats.receivingYards, settings.receivingYards, settings.receivingYardsPer),
+      points: getStatPoints("receivingYards", stats.receivingYards, position, settings),
     },
     {
       key: "touchdowns",
       value: stats.touchdowns,
       label: `${formatStat(stats.touchdowns)} TD`,
-      points: stats.touchdowns * touchdownPoints,
+      points: getStatPoints("touchdowns", stats.touchdowns, position, settings),
     },
     {
       key: "kickingPoints",
       value: stats.kickingPoints,
       label: "Kicking",
-      points: stats.kickingPoints,
+      points: getStatPoints("kickingPoints", stats.kickingPoints, position, settings),
     },
   ];
   // Always include touchdowns, even if zero
